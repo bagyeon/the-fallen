@@ -8,10 +8,21 @@ import EndScene from './scenes/EndScene.js';
 const config = {
   type: Phaser.AUTO,
   parent: 'game',
-  width: 800,
-  height: 600,
-  backgroundColor: '#222222',
-  physics: { default: 'arcade', arcade: { gravity: { y: 1000 }, debug: false } },
+  width: 1280,
+  height: 720,
+  backgroundColor: '#10151f',
+  pixelArt: true,
+  render: {
+    antialias: false,
+    roundPixels: true
+  },
+  scale: {
+    mode: Phaser.Scale.FIT,
+    autoCenter: Phaser.Scale.CENTER_BOTH,
+    width: 1280,
+    height: 720
+  },
+  physics: { default: 'arcade', arcade: { gravity: { y: 1100 }, debug: false } },
   scene: [BootScene, TitleScene, StageScene, BossScene, EndScene]
 };
 
