@@ -20,10 +20,38 @@ export default class BossScene extends Phaser.Scene {
     this.ending = false;
     this.worldWidth = 4800;
 
+    this.bossMusic = this.sound.add('boss-bgm', { loop: false });
+    this.bossMusic.on('complete', () => {
+      if (!this.bossMusic) {
+        return;
+      }
+
+      if (!this.ending && this.boss?.isAlive()) {
+        this.bossMusic.play();
+      } else {
+        this.bossMusic.stop();
+      }
+    });
+    this.bossMusic.play();
+
+    this.events.once('shutdown', () => {
+      if (this.bossMusic) {
+        this.bossMusic.stop();
+        this.bossMusic.destroy();
+        this.bossMusic = null;
+      }
+    });
+
     this.cameras.main.setBackgroundColor(0x191225);
     this.physics.world.setBounds(0, 0, this.worldWidth, 720);
     this.cameras.main.setBounds(0, 0, this.worldWidth, 720);
     this.cameras.main.roundPixels = true;
+
+    const bgTexture = this.textures.get('game-background').getSourceImage();
+    const bgScale = 720 / bgTexture.height;
+    const background = this.add.tileSprite(this.worldWidth / 2, 360, this.worldWidth, 720, 'game-background');
+    background.setTileScale(bgScale, bgScale);
+    background.setDepth(-1000);
 
     const ground = this.physics.add.staticImage(this.worldWidth / 2, 684, 'ground-tile');
     ground.setDisplaySize(this.worldWidth, 68);
@@ -68,7 +96,29 @@ export default class BossScene extends Phaser.Scene {
       color: '#edf3ff'
     }).setScrollFactor(0).setDepth(1000);
 
-    this.helpText = this.add.text(24, 82, 'WASD 이동 | 좌클릭 공격 | Z 대시', {
+    // 보스 체력바 (화면 상단 중앙)
+    const bossBarWidth = 400;
+    const bossBarHeight = 22;
+    const bossBarX = (this.scale.width - bossBarWidth) / 2;
+    const bossBarY = 14;
+
+    this.bossHpLabel = this.add.text(this.scale.width / 2, bossBarY - 2, 'BOSS', {
+      fontFamily: 'Arial',
+      fontSize: '14px',
+      color: '#ff6688'
+    }).setOrigin(0.5, 1).setScrollFactor(0).setDepth(1001);
+
+    this.bossHpBarBg = this.add.rectangle(
+      this.scale.width / 2, bossBarY + bossBarHeight / 2,
+      bossBarWidth, bossBarHeight, 0x330011
+    ).setScrollFactor(0).setDepth(1001);
+
+    this.bossHpBarFill = this.add.rectangle(
+      bossBarX, bossBarY + bossBarHeight / 2,
+      bossBarWidth, bossBarHeight, 0xff3366
+    ).setOrigin(0, 0.5).setScrollFactor(0).setDepth(1002);
+
+    this.helpText = this.add.text(24, 82, 'WASD 이동 | W 공중대시 | S 강하 | 좌클릭 공격 | Z 대시', {
       fontFamily: 'Arial',
       fontSize: '18px',
       color: '#b9c9e8'
@@ -80,9 +130,12 @@ export default class BossScene extends Phaser.Scene {
 
   updateHUD() {
     this.statusText.setText([
-      `체력: ${this.player.health}/${this.player.maxHealth}`,
-      `보스 HP: ${this.boss.health}/${this.boss.maxHealth}`
+      `체력: ${this.player.health}/${this.player.maxHealth}`
     ]);
+
+    // 보스 체력바 갱신
+    const ratio = Math.max(0, this.boss.health / this.boss.maxHealth);
+    this.bossHpBarFill.setDisplaySize(400 * ratio, 22);
   }
 
   handleBossDefeat() {
@@ -91,8 +144,62 @@ export default class BossScene extends Phaser.Scene {
     }
 
     this.ending = true;
-    this.time.delayedCall(700, () => {
-      this.scene.start('End', { result: 'win' });
+
+    // 플레이어 이동 즉시 차단
+    if (this.player?.sprite?.body) {
+      this.player.sprite.setVelocity(0, 0);
+      this.player.sprite.body.enable = false;
+    }
+
+    // 보스 스프라이트 위에서부터 픽셀이 사라지는 디졸브 애니메이션
+    const bossSprite = this.boss.sprite;
+    if (!bossSprite || !bossSprite.active) {
+      this.time.delayedCall(500, () => {
+        this.scene.start('End', { result: 'win' });
+      });
+      return;
+    }
+
+    // 보스 틴트 초기화
+    bossSprite.clearTint();
+
+    // setCrop을 이용해 위에서 아래로 픽셀이 사라지는 효과
+    const frame = bossSprite.frame;
+    const texW = frame.realWidth;
+    const texH = frame.realHeight;
+    const pixelStep = 3; // 픽셀 단위
+    const dissolveData = { erasedRows: 0 };
+
+    const updateCrop = () => {
+      if (!bossSprite || !bossSprite.active) return;
+      const cropY = dissolveData.erasedRows;
+      const cropH = Math.max(0, texH - dissolveData.erasedRows);
+      bossSprite.setCrop(0, cropY, texW, cropH);
+    };
+
+    updateCrop();
+
+    const totalDuration = 1400;
+    const steps = Math.ceil(texH / pixelStep);
+    const stepInterval = totalDuration / steps;
+
+    const dissolveTimer = this.time.addEvent({
+      delay: stepInterval,
+      repeat: steps,
+      callback: () => {
+        dissolveData.erasedRows = Math.min(dissolveData.erasedRows + pixelStep, texH + pixelStep);
+        updateCrop();
+
+        if (dissolveData.erasedRows >= texH) {
+          dissolveTimer.remove();
+          if (bossSprite.active) {
+            bossSprite.destroy();
+          }
+          this.time.delayedCall(600, () => {
+            this.scene.start('End', { result: 'win' });
+          });
+        }
+      }
     });
   }
 

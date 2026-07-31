@@ -19,6 +19,12 @@ export default class StageScene extends Phaser.Scene {
     this.cameras.main.setBounds(0, 0, this.worldWidth, 720);
     this.cameras.main.roundPixels = true;
 
+    const bgTexture = this.textures.get('game-background').getSourceImage();
+    const bgScale = 720 / bgTexture.height;
+    const background = this.add.tileSprite(this.worldWidth / 2, 360, this.worldWidth, 720, 'game-background');
+    background.setTileScale(bgScale, bgScale);
+    background.setDepth(-1000);
+
     const ground = this.physics.add.staticImage(this.worldWidth / 2, 684, 'ground-tile');
     ground.setDisplaySize(this.worldWidth, 68);
     ground.refreshBody();
@@ -53,7 +59,7 @@ export default class StageScene extends Phaser.Scene {
       color: '#edf3ff'
     }).setScrollFactor(0).setDepth(1000);
 
-    this.helpText = this.add.text(24, 82, 'WASD 이동 | 좌클릭 공격 | Z 대시', {
+    this.helpText = this.add.text(24, 82, 'WASD 이동 | W 공중대시 | S 강하 | 좌클릭 공격 | Z 대시', {
       fontFamily: 'Arial',
       fontSize: '18px',
       color: '#b9c9e8'
@@ -127,6 +133,13 @@ export default class StageScene extends Phaser.Scene {
     }
 
     this.stageComplete = true;
+
+    // 플레이어 이동 및 입력 즉시 차단
+    if (this.player?.sprite?.body) {
+      this.player.sprite.setVelocity(0, 0);
+      this.player.sprite.body.enable = false;
+    }
+
     this.time.delayedCall(700, () => {
       if (this.stage >= 2) {
         this.scene.start('Boss');

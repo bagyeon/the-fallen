@@ -214,8 +214,18 @@ export default class Enemy {
     if (this.rangeIndicator) {
       this.rangeIndicator.destroy();
     }
-    if (this.sprite && this.sprite.active) {
-      this.sprite.destroy();
+
+    // 보스는 스프라이트를 바로 제거하지 않음 (씬에서 디졸브 애니메이션 처리)
+    if (this.type !== 'boss') {
+      if (this.sprite && this.sprite.active) {
+        this.sprite.destroy();
+      }
+    } else {
+      // 보스 물리 비활성화
+      if (this.sprite && this.sprite.body) {
+        this.sprite.body.enable = false;
+        this.sprite.setVelocity(0, 0);
+      }
     }
   }
 
@@ -422,7 +432,7 @@ export default class Enemy {
         // 각도 차이가 15도 이내면 맞음 (범위: 50px)
         const angleDiff = Phaser.Math.Angle.Normalize(playerAngle - angle);
         if (Math.abs(angleDiff) < 0.3 && distToPlayer < 150) {
-          player.takeDamage(Math.ceil(this.damage * 0.8), time);
+          player.takeDamage(3, time);
         }
       }
       

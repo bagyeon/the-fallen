@@ -7,7 +7,13 @@ export default class TitleScene extends Phaser.Scene {
     const { width, height } = this.scale;
 
     this.cameras.main.setBackgroundColor('#10151f');
-    this.add.rectangle(width / 2, height / 2, width, height, 0x111827, 1);
+    const bgTexture = this.textures.get('game-background').getSourceImage();
+    const bgScale = height / bgTexture.height;
+    const background = this.add.tileSprite(width / 2, height / 2, width, height, 'game-background');
+    background.setTileScale(bgScale, bgScale);
+    background.setDepth(-1000);
+
+    this.add.rectangle(width / 2, height / 2, width, height, 0x111827, 0.45);
     this.add.rectangle(width / 2, height / 2, width * 0.78, height * 0.55, 0x1d2938, 0.92);
     this.add.rectangle(width / 2, height / 2, width * 0.76, height * 0.52, 0x0f1724, 0.92);
 
