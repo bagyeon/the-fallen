@@ -83,6 +83,10 @@ export default class Enemy {
     return this.speed;
   }
 
+  tryAttack(player, time) {
+    this.updateAttackCycle(player, time);
+  }
+
   updateAttackCycle(player, time) {
     if (this.nextAttackAt === null) {
       this.nextAttackAt = time + this.attackCooldown;
