@@ -29,9 +29,11 @@ export default class StageScene extends Phaser.Scene {
     const ground = this.physics.add.staticImage(this.worldWidth / 2, 684, 'ground-tile');
     ground.setDisplaySize(this.worldWidth, 68);
     ground.refreshBody();
+    this.ground = ground;
 
     // 플랫폼 생성 (스테이지별 텍스처 지원)
     const platformGroup = this.physics.add.staticGroup();
+    this.platformGroup = platformGroup;
     if (stageConfig.platforms) {
       const platTex = stageConfig.platformTexture || 'platform-tile';
       stageConfig.platforms.forEach(p => {
@@ -46,6 +48,8 @@ export default class StageScene extends Phaser.Scene {
     this.physics.add.collider(this.player.sprite, platformGroup);
 
     this.enemySprites = this.physics.add.group();
+    this.wave2Triggered = false;
+    this.wave2Spawned = false;
     this.enemies = stageConfig.enemies.map((enemyConfig) => {
       const enemy = new Enemy(this, enemyConfig.x, enemyConfig.y ?? 400, enemyConfig);
       this.enemySprites.add(enemy.sprite);
@@ -97,8 +101,18 @@ export default class StageScene extends Phaser.Scene {
     this.player.update(time, delta);
     this.enemies.forEach((enemy) => enemy.update(time, delta, this.player));
 
-    if (this.enemies.every((enemy) => !enemy.isAlive())) {
+    // 맵 오른쪽 끝 도달 시 다음 스테이지로 이동
+    if (this.player.sprite.x >= this.worldWidth - 80) {
       this.handleStageClear();
+      return;
+    }
+
+    if (this.enemies.every((enemy) => !enemy.isAlive())) {
+      if (this.stage === 2 && !this.wave2Triggered) {
+        this.triggerWave2();
+      } else if (!this.wave2Triggered || this.wave2Spawned) {
+        this.handleStageClear();
+      }
     }
 
     this.updateHUD();
@@ -154,6 +168,26 @@ export default class StageScene extends Phaser.Scene {
       `체력: ${this.player.health}/${this.player.maxHealth}`,
       `남은 적: ${this.enemies.filter((enemy) => enemy.isAlive()).length}`
     ]);
+  }
+
+  triggerWave2() {
+    this.wave2Triggered = true;
+    this.statusText.setText('\u2757 \uad74\uc6d5\uc5d0\uc11c \uc801\uc774 \ub098\ud0c0\ub09c\ub2e4!');
+
+    this.time.delayedCall(1000, () => {
+      const wave2Config = { health: 4, damage: 2, speed: 98, attackCooldown: 780, detectionRadius: 1000, textureKey: 'enemy-elite', type: 'elite' };
+      const camX = this.cameras.main.scrollX;
+      const spawnXs = Array.from({ length: 10 }, (_, i) => camX + 80 + i * 120);
+
+      spawnXs.forEach(spawnX => {
+        const enemy = new Enemy(this, spawnX, -60, wave2Config);
+        this.enemySprites.add(enemy.sprite);
+        this.physics.add.collider(enemy.sprite, this.ground);
+        this.physics.add.collider(enemy.sprite, this.platformGroup);
+        this.enemies.push(enemy);
+      });
+      this.wave2Spawned = true;
+    });
   }
 
   handlePlayerDeath() {

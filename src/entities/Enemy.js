@@ -30,10 +30,12 @@ export default class Enemy {
     this.healthBarBg = scene.add.rectangle(x - this.healthBarWidth / 2, y + this.healthBarOffsetY, this.healthBarWidth, this.healthBarHeight, 0x1f2430, 0.9);
     this.healthBarBg.setOrigin(0, 0.5);
     this.healthBarBg.setDepth(6);
+    if (this.type === 'boss') this.healthBarBg.setVisible(false);
 
     this.healthBarFill = scene.add.rectangle(x - this.healthBarWidth / 2, y + this.healthBarOffsetY, this.healthBarWidth, this.healthBarHeight, 0x66d37b, 1);
     this.healthBarFill.setOrigin(0, 0.5);
     this.healthBarFill.setDepth(7);
+    if (this.type === 'boss') this.healthBarFill.setVisible(false);
 
     this.rangeIndicator = scene.add.graphics();
     this.rangeIndicator.setDepth(1);
@@ -45,8 +47,8 @@ export default class Enemy {
     }
 
     if (this.type === 'boss') {
-      this.sprite.setScale(2.025);
-      this.sprite.body.setSize(40, 54).setOffset(16, 18);
+      this.sprite.setDisplaySize(219, 243);
+      this.sprite.body.setSize(568, 689).setOffset(224, 227);
       this.bossActionCooldown = 0;
       this.bossNextActionAt = 0;
       this.bossLaserNextAt = 0;
@@ -143,13 +145,23 @@ export default class Enemy {
 
     this.hideAttackIndicator();
     this.nextAttackAt = time + this.attackCooldown;
-    player.takeDamage(this.damage, time);
     this.sprite.setTint(0xffef9d);
     this.scene.time.delayedCall(90, () => {
       if (this.sprite && this.sprite.active && !this.defeated) {
-        this.sprite.clearTint();
+        this.resetTint();
       }
     });
+
+    // 보스는 즉시, 일반 몹은 0.2초 후 데미지
+    if (this.type === 'boss') {
+      player.takeDamage(this.damage, time);
+    } else {
+      this.scene.time.delayedCall(10, () => {
+        if (!this.defeated && player.health > 0) {
+          player.takeDamage(this.damage, this.scene.time.now);
+        }
+      });
+    }
   }
 
   takeDamage(amount) {
@@ -200,7 +212,7 @@ export default class Enemy {
     this.updateHealthBarFill();
     this.scene.time.delayedCall(100, () => {
       if (this.sprite && this.sprite.active && !this.defeated) {
-        this.sprite.clearTint();
+        this.resetTint();
       }
     });
 
@@ -372,7 +384,7 @@ export default class Enemy {
         
         this.sprite.setVelocityX(0);
         if (this.sprite && this.sprite.active && !this.defeated) {
-          this.sprite.clearTint();
+          this.resetTint();
         }
         this.bossInAction = false;
       });
@@ -398,7 +410,7 @@ export default class Enemy {
     
     this.scene.time.delayedCall(400, () => {
       if (this.sprite && this.sprite.active && !this.defeated) {
-        this.sprite.clearTint();
+        this.resetTint();
       }
       player.takeDamage(this.damage * 1.5, time);
       this.bossInAction = false;
@@ -406,76 +418,97 @@ export default class Enemy {
   }
 
   bossLaserAttack(player, time) {
-    // 보스 중심에서 랜덤하게 주변으로 발사되는 레이저
     const baseAngle = Math.random() * Math.PI * 2;
-    const laserDistance = 2000; // 충분히 긴 거리
-    
-    // 0.7초 전에 주황색 경고 레이저 표시
+    const laserDistance = 2000;
+    const innerRadius = 90; // 보스 몸통 가장자리에서 시작
+    const bx = this.sprite.x;
+    const by = this.sprite.y;
+
+    // 경고 레이저 표시
     const warningGraphics = this.scene.add.graphics();
-    warningGraphics.lineStyle(3, 0xffab00, 0.5); // 주황색
-    
+    warningGraphics.lineStyle(3, 0xffab00, 0.5);
+
     for (let i = 0; i < 4; i++) {
       const angle = baseAngle + (Math.PI / 2) * i;
-      const endX = this.sprite.x + Math.cos(angle) * laserDistance;
-      const endY = this.sprite.y + Math.sin(angle) * laserDistance;
-      warningGraphics.lineBetween(this.sprite.x, this.sprite.y, endX, endY);
+      const startX = bx + Math.cos(angle) * innerRadius;
+      const startY = by + Math.sin(angle) * innerRadius;
+      const endX = bx + Math.cos(angle) * laserDistance;
+      const endY = by + Math.sin(angle) * laserDistance;
+      warningGraphics.lineBetween(startX, startY, endX, endY);
     }
-    
+
     warningGraphics.setDepth(2);
-    
+
     // 0.7초 후 경고 레이저 제거
     this.scene.time.delayedCall(700, () => {
       warningGraphics.destroy();
-      
+
       this.sprite.setTint(0xff3366);
-      
-      // 십자형 레이저 발사 (보스 중심)
-      const laserGraphics = this.scene.add.graphics();
-      laserGraphics.lineStyle(6, 0xff3366, 0.9);
-      
-      // 같은 각도로 4개 방향 발사
+
+      // 피해 판정 먼저 계산
+      const playerAngle = Phaser.Math.Angle.Between(bx, by, player.sprite.x, player.sprite.y);
+      const distToPlayer = Phaser.Math.Distance.Between(bx, by, player.sprite.x, player.sprite.y);
       for (let i = 0; i < 4; i++) {
         const angle = baseAngle + (Math.PI / 2) * i;
-        const endX = this.sprite.x + Math.cos(angle) * laserDistance;
-        const endY = this.sprite.y + Math.sin(angle) * laserDistance;
-        laserGraphics.lineBetween(this.sprite.x, this.sprite.y, endX, endY);
-        
-        // 플레이어가 레이저에 맞는지 확인 (보스 중심에서 발사되는 거리 기준)
-        const distToPlayer = Phaser.Math.Distance.Between(
-          this.sprite.x,
-          this.sprite.y,
-          player.sprite.x,
-          player.sprite.y
-        );
-        
-        // 레이저 방향과 플레이어 위치의 각도 비교
-        const playerAngle = Phaser.Math.Angle.Between(
-          this.sprite.x,
-          this.sprite.y,
-          player.sprite.x,
-          player.sprite.y
-        );
-        
-        // 각도 차이가 15도 이내면 맞음 (범위: 50px)
         const angleDiff = Phaser.Math.Angle.Normalize(playerAngle - angle);
-        if (Math.abs(angleDiff) < 0.3 && distToPlayer < 150) {
+        if (Math.abs(angleDiff) < 0.3 && distToPlayer > innerRadius && distToPlayer < 2000) {
           player.takeDamage(2, time);
         }
       }
-      
-      laserGraphics.setDepth(2);
-      
-      this.scene.time.delayedCall(300, () => {
-        laserGraphics.destroy();
+
+      // 빔을 짧은 시간 동안 늘려가며 발사 효과
+      let progress = 0;
+      const totalDuration = 180;
+      const beamGraphics = this.scene.add.graphics();
+      beamGraphics.setDepth(3);
+
+      const beamTimer = this.scene.time.addEvent({
+        delay: 16,
+        repeat: Math.floor(totalDuration / 16),
+        callback: () => {
+          if (!beamGraphics.active) return;
+          progress = Math.min(1, progress + 16 / totalDuration);
+          beamGraphics.clear();
+          for (let i = 0; i < 4; i++) {
+            const angle = baseAngle + (Math.PI / 2) * i;
+            const startX = bx + Math.cos(angle) * innerRadius;
+            const startY = by + Math.sin(angle) * innerRadius;
+            const endX = bx + Math.cos(angle) * (innerRadius + (laserDistance - innerRadius) * progress);
+            const endY = by + Math.sin(angle) * (innerRadius + (laserDistance - innerRadius) * progress);
+            // 외곽 글로우
+            beamGraphics.lineStyle(28, 0xff1144, 0.12);
+            beamGraphics.lineBetween(startX, startY, endX, endY);
+            // 중간 글로우
+            beamGraphics.lineStyle(14, 0xff3366, 0.35);
+            beamGraphics.lineBetween(startX, startY, endX, endY);
+            // 밝은 코어
+            beamGraphics.lineStyle(4, 0xffffff, 0.95);
+            beamGraphics.lineBetween(startX, startY, endX, endY);
+          }
+        }
+      });
+
+      this.scene.time.delayedCall(totalDuration + 120, () => {
+        beamTimer.remove();
+        beamGraphics.destroy();
       });
     });
     
     this.scene.time.delayedCall(1000, () => {
       if (this.sprite && this.sprite.active && !this.defeated) {
-        this.sprite.clearTint();
+        this.resetTint();
       }
       this.bossInAction = false;
     });
+  }
+
+  resetTint() {
+    if (!this.sprite?.active) return;
+    if (this.type === 'boss' && this.bossPhase === 2) {
+      this.sprite.setTint(0xff6600);
+    } else {
+      this.resetTint();
+    }
   }
 
   isAlive() {
@@ -532,12 +565,19 @@ export default class Enemy {
     // 근접 공격을 더 자주하도록 쿨타임 단축
     this.attackCooldown = 400; // 기존 620에서 단축
     
-    // 빨간색으로 표시하여 강화됨을 나타냄
-    this.sprite.setTint(0xff6b6b);
+    // 주황색으로 각성 연출 후 영구 적용
+    this.sprite.setTint(0xffffff);
+    this.scene.time.delayedCall(100, () => {
+      if (!this.sprite?.active) return;
+      this.sprite.setTint(0xff4400);
+    });
+    this.scene.time.delayedCall(300, () => {
+      if (!this.sprite?.active) return;
+      this.sprite.setTint(0xffffff);
+    });
     this.scene.time.delayedCall(500, () => {
-      if (this.sprite && this.sprite.active && !this.defeated) {
-        this.sprite.clearTint();
-      }
+      if (!this.sprite?.active) return;
+      this.sprite.setTint(0xff6600); // 2페이즈 주황색 영구 유지
     });
     
     // 보스 행동 타이머 초기화

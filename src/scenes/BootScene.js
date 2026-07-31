@@ -20,6 +20,8 @@ export default class BootScene extends Phaser.Scene {
     this.load.image('stage2-bg', `${base}resource/img/desert.avif`);
     this.load.image('boss-bg', `${base}resource/img/던전.png`);
     this.load.image('weapon-sword', `${base}resource/img/sword.png`);
+    this.load.image('player-melee', `${base}resource/img/siba.png`);
+    this.load.image('boss', `${base}resource/img/boss.png`);
     this.load.audio('boss-bgm', `${base}resource/sound/boss1.mp3`);
   }
 
@@ -66,19 +68,6 @@ export default class BootScene extends Phaser.Scene {
       px(graphics, 6, 18, 4, 4, 0x7b5534);
     });
 
-    this.createPixelTexture('player-melee', 48, 64, (graphics) => {
-      px(graphics, 17, 4, 14, 12, 0xf0d5a8);
-      px(graphics, 14, 14, 20, 16, 0x81b9ff);
-      px(graphics, 13, 30, 8, 24, 0x2d3952);
-      px(graphics, 27, 30, 8, 24, 0x2d3952);
-      px(graphics, 11, 20, 5, 8, 0x81b9ff);
-      px(graphics, 32, 20, 5, 8, 0x81b9ff);
-      px(graphics, 34, 18, 8, 3, 0xd9e2f2);
-      px(graphics, 31, 17, 4, 5, 0xb98d52);
-      px(graphics, 17, 6, 3, 2, 0x25303f);
-      px(graphics, 28, 6, 3, 2, 0x25303f);
-    });
-
     this.createPixelTexture('enemy-basic', 48, 56, (graphics) => {
       px(graphics, 15, 5, 18, 12, 0x89d17d);
       px(graphics, 13, 15, 22, 18, 0x3f8f55);
@@ -103,19 +92,6 @@ export default class BootScene extends Phaser.Scene {
       px(graphics, 18, 22, 12, 3, 0x361708);
     });
 
-    this.createPixelTexture('boss', 72, 80, (graphics) => {
-      px(graphics, 24, 6, 24, 16, 0xffa46b);
-      px(graphics, 18, 20, 36, 22, 0x8d3d7a);
-      px(graphics, 16, 42, 12, 26, 0x4f2446);
-      px(graphics, 44, 42, 12, 26, 0x4f2446);
-      px(graphics, 12, 25, 6, 10, 0xd86b8f);
-      px(graphics, 54, 25, 6, 10, 0xd86b8f);
-      px(graphics, 24, 9, 4, 4, 0x2b0f17);
-      px(graphics, 39, 9, 4, 4, 0x2b0f17);
-      px(graphics, 28, 26, 16, 4, 0x2a1727);
-      px(graphics, 20, 50, 32, 6, 0x6c295b);
-    });
-
-    this.scene.start('Boss');
+    this.scene.start('Title');
   }
 }

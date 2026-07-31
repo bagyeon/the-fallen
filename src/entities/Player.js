@@ -6,8 +6,8 @@ export default class Player {
     this.sprite = scene.physics.add.sprite(x, y, 'player-melee');
     this.sprite.setCollideWorldBounds(true);
     this.sprite.setDepth(4);
-    this.sprite.setScale(1.5);
-    this.sprite.body.setSize(30, 42).setOffset(9, 18);
+    this.sprite.setDisplaySize(96, 96);
+    this.sprite.body.setSize(480, 672).setOffset(272, 288);
 
     this.weaponSprite = scene.add.image(x, y, 'weapon-sword');
     this.weaponSprite.setDepth(5);
@@ -86,6 +86,26 @@ export default class Player {
     };
 
     this.scene.input.on('pointerdown', this.pointerAttackHandler);
+
+    // 스킬 쿨다운 UI (화면 왼쪽 하단 고정)
+    const skillDefs = [
+      { label: 'DASH', sub: 'Shift+A/D', color: 0x3399ff },
+      { label: 'Q/E',  sub: 'Spin',      color: 0xaa44ff },
+      { label: 'S',    sub: 'Smash',     color: 0xff8822 },
+    ];
+    const boxW = 68, boxH = 58, gap = 8, startX = 20, startY = 650;
+    this.skillSlots = skillDefs.map((def, i) => {
+      const sx = startX + i * (boxW + gap);
+      const bg = scene.add.rectangle(sx, startY, boxW, boxH, 0x080c14, 0.88).setOrigin(0, 0).setScrollFactor(0).setDepth(1010);
+      const overlay = scene.add.rectangle(sx, startY, boxW, boxH, 0x000000, 0.65).setOrigin(0, 0).setScrollFactor(0).setDepth(1011);
+      overlay.setSize(boxW, 0);
+      const border = scene.add.rectangle(sx, startY, boxW, boxH, def.color, 0).setOrigin(0, 0).setScrollFactor(0).setDepth(1012);
+      border.setStrokeStyle(1.5, def.color, 0.7);
+      const labelTxt = scene.add.text(sx + boxW / 2, startY + 8, def.label, { fontFamily: 'Arial', fontSize: '15px', fontStyle: 'bold', color: '#e8eeff' }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(1013);
+      const subTxt = scene.add.text(sx + boxW / 2, startY + 26, def.sub, { fontFamily: 'Arial', fontSize: '9px', color: '#778899' }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(1013);
+      const timeTxt = scene.add.text(sx + boxW / 2, startY + 40, '', { fontFamily: 'Arial', fontSize: '12px', color: '#aaccff' }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(1013);
+      return { overlay, timeTxt, boxH };
+    });
   }
 
   update(time, delta) {
@@ -185,6 +205,23 @@ export default class Player {
 
     this.syncVisuals();
     this.syncHealthBar();
+    this.syncCooldownUI(time);
+  }
+
+  syncCooldownUI(time) {
+    if (!this.skillSlots) return;
+    const cooldowns = [
+      { until: this.nextDashAt,               total: this.dashCooldown },
+      { until: this.spinAttackCooldownUntil,  total: 4000 },
+      { until: this.groundSmashCooldownUntil, total: 3000 },
+    ];
+    cooldowns.forEach(({ until, total }, i) => {
+      const slot = this.skillSlots[i];
+      const remaining = Math.max(0, until - time);
+      const ratio = Math.min(1, remaining / total);
+      slot.overlay.setSize(slot.overlay.width, slot.boxH * ratio);
+      slot.timeTxt.setText(remaining > 0 ? (remaining / 1000).toFixed(1) + 's' : '');
+    });
   }
 
   syncVisuals() {
@@ -342,7 +379,7 @@ export default class Player {
 
   startSpinAttack(time, direction) {
     this.spinAttackActive = true;
-    this.spinAttackCooldownUntil = time + 5000;
+    this.spinAttackCooldownUntil = time + 4000;
 
     // 5타 콤보: 720도를 144도 간격으로 나눔, 평타의 1.5배 데미지
     const hitSets = [new Set(), new Set(), new Set(), new Set(), new Set()];

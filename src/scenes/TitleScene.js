@@ -32,15 +32,18 @@ export default class TitleScene extends Phaser.Scene {
 
     this.add.text(width / 2, 330, [
       '조작 방법',
-      'WASD: 이동과 점프',
-      '좌클릭: 현재 무기 공격',
-      'Z: 앞으로 대시'
+      'A / D: 좌우 이동',
+      'W: 점프 (공중에서 1회 상승 대시)',
+      'Shift + A / D: 지상 돌진 대시',
+      'S: 공중 급강하 (상승 대시 후 지면 강타)',
+      'E / Q: 공중 720도 회전 공격',
+      '좌클릭: 근접 공격'
     ], {
       fontFamily: 'Arial',
-      fontSize: '24px',
+      fontSize: '20px',
       color: '#e5eefc',
       align: 'center',
-      lineSpacing: 10
+      lineSpacing: 8
     }).setOrigin(0.5);
 
     this.add.text(width / 2, 610, 'ENTER를 눌러 시작', {
