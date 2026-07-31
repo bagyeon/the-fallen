@@ -1,0 +1,1 @@
+- 8: 빌드·배포 — Git 초기화, GitHub(`bagyeon/the-fallen`) 푸시, `gh-pages`로 배포

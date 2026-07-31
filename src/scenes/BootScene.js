@@ -88,6 +88,6 @@ export default class BootScene extends Phaser.Scene {
       px(graphics, 20, 50, 32, 6, 0x6c295b);
     });
 
-    this.scene.start('Title');
+    this.scene.start('Boss');
   }
 }

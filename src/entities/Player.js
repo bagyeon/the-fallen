@@ -32,21 +32,23 @@ export default class Player {
     this.nextDashAt = 0;
     this.dashDirection = 1;
 
+    this.afterimageInterval = 30; // ms
+    this.nextAfterimageAt = 0;
+
     this.maxHealth = 6;
     this.health = this.maxHealth;
     this.invulnerableUntil = 0;
 
     this.healthBarWidth = 44;
     this.healthBarHeight = 6;
-    this.healthBarOffsetX = 44;
-    this.healthBarOffsetY = -26;
+    this.healthBarOffsetY = -50;
 
-    this.healthBarBg = scene.add.rectangle(x - this.healthBarOffsetX, y + this.healthBarOffsetY, this.healthBarWidth, this.healthBarHeight, 0x1f2430, 0.9);
-    this.healthBarBg.setOrigin(1, 0.5);
+    this.healthBarBg = scene.add.rectangle(x - this.healthBarWidth / 2, y + this.healthBarOffsetY, this.healthBarWidth, this.healthBarHeight, 0x1f2430, 0.9);
+    this.healthBarBg.setOrigin(0, 0.5);
     this.healthBarBg.setDepth(6);
 
-    this.healthBarFill = scene.add.rectangle(x - this.healthBarOffsetX, y + this.healthBarOffsetY, this.healthBarWidth, this.healthBarHeight, 0x6ee07b, 1);
-    this.healthBarFill.setOrigin(1, 0.5);
+    this.healthBarFill = scene.add.rectangle(x - this.healthBarWidth / 2, y + this.healthBarOffsetY, this.healthBarWidth, this.healthBarHeight, 0x6ee07b, 1);
+    this.healthBarFill.setOrigin(0, 0.5);
     this.healthBarFill.setDepth(7);
 
     this.pointerAttackHandler = () => {
@@ -65,8 +67,19 @@ export default class Player {
 
     if (time < this.dashingUntil) {
       body.setVelocityX(this.dashDirection * this.dashSpeed);
+      // 대시 중 유지
+      this.sprite.setTint(0x87ceeb);
+      // 잔상 생성
+      if (time >= this.nextAfterimageAt) {
+        this.spawnAfterimage();
+        this.nextAfterimageAt = time + this.afterimageInterval;
+      }
     } else {
       body.setVelocityX(0);
+      // 대시 종료 시 색 제거
+      if (this.sprite.isTinted) {
+        this.sprite.clearTint();
+      }
 
       if (this.cursors.left.isDown) {
         body.setVelocityX(-this.speed);
@@ -94,7 +107,7 @@ export default class Player {
   }
 
   syncHealthBar() {
-    const barX = this.sprite.x - this.healthBarOffsetX;
+    const barX = this.sprite.x - this.healthBarWidth / 2;
     const barY = this.sprite.y + this.healthBarOffsetY;
     const healthRatio = this.maxHealth > 0 ? this.health / this.maxHealth : 0;
 
@@ -114,6 +127,8 @@ export default class Player {
 
   meleeAttack() {
     const direction = this.facing >= 0 ? 1 : -1;
+    const isDashing = this.scene.time.now < this.dashingUntil;
+    const damage = isDashing ? 2 : 1;
     const hitbox = this.scene.add.rectangle(this.sprite.x + direction * 48, this.sprite.y - 2, this.meleeRange, 40, 0xf3e0b0, 0.35);
     this.scene.physics.add.existing(hitbox);
     hitbox.body.allowGravity = false;
@@ -125,7 +140,7 @@ export default class Player {
         const enemy = enemySprite.enemyRef;
         if (enemy && !hitEnemies.has(enemy)) {
           hitEnemies.add(enemy);
-          enemy.takeDamage(1);
+          enemy.takeDamage(damage);
         }
       });
     }
@@ -141,7 +156,33 @@ export default class Player {
     this.dashingUntil = time + this.dashDuration;
     this.nextDashAt = time + this.dashCooldown;
     this.dashDirection = this.facing >= 0 ? 1 : -1;
+    this.nextAfterimageAt = time;
     this.sprite.setVelocityX(this.dashDirection * this.dashSpeed);
+    // 대시 중 하늘색으로 표시
+    this.sprite.setTint(0x87ceeb);
+  }
+
+  spawnAfterimage() {
+    const ghost = this.scene.add.image(
+      this.sprite.x,
+      this.sprite.y,
+      this.sprite.texture.key
+    );
+    ghost.setFlipX(this.sprite.flipX);
+    ghost.setAlpha(0.6);
+    ghost.setTint(0x87ceeb);
+    ghost.setDepth(3); // 플레이어(4)보다 뒤
+    ghost.setScale(this.sprite.scaleX, this.sprite.scaleY);
+
+    this.scene.tweens.add({
+      targets: ghost,
+      alpha: 0,
+      duration: 180,
+      ease: 'Linear',
+      onComplete: () => {
+        ghost.destroy();
+      }
+    });
   }
 
   takeDamage(amount, time = 0) {
@@ -150,9 +191,39 @@ export default class Player {
     }
 
     this.invulnerableUntil = time + 500;
+    const previousHealth = this.health;
     this.health = Math.max(0, this.health - amount);
     this.sprite.setTint(0xff7a7a);
     this.healthBarFill.setFillStyle(this.health <= 2 ? 0xff6b6b : 0x6ee07b, 1);
+    
+    // 체력바 흔들림 효과
+    const originalBarX = this.healthBarFill.x;
+    this.scene.tweens.add({
+      targets: this.healthBarFill,
+      x: originalBarX + 4,
+      duration: 50,
+      yoyo: true,
+      repeat: 3
+    });
+    
+    // 체력바 천천히 줄어드는 효과
+    if (this.healthBarFill && this.maxHealth > 0) {
+      const currentWidth = this.healthBarWidth * (previousHealth / this.maxHealth);
+      const newWidth = this.healthBarWidth * (this.health / this.maxHealth);
+      let animatingHealthBar = { width: currentWidth };
+      this.scene.tweens.add({
+        targets: animatingHealthBar,
+        width: newWidth,
+        duration: 400,
+        ease: 'Quad.easeOut',
+        onUpdate: () => {
+          if (this.healthBarFill && this.healthBarFill.active) {
+            this.healthBarFill.setSize(animatingHealthBar.width, this.healthBarHeight);
+          }
+        }
+      });
+    }
+    
     this.scene.time.delayedCall(120, () => {
       if (this.sprite && this.sprite.active) {
         this.sprite.clearTint();
