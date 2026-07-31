@@ -23,7 +23,8 @@ export default class Player {
       right: Phaser.Input.Keyboard.KeyCodes.D,
       shift: Phaser.Input.Keyboard.KeyCodes.SHIFT,
       spinRight: Phaser.Input.Keyboard.KeyCodes.E,
-      spinLeft: Phaser.Input.Keyboard.KeyCodes.Q
+      spinLeft: Phaser.Input.Keyboard.KeyCodes.Q,
+      ultimate: Phaser.Input.Keyboard.KeyCodes.R
     });
 
     this.speed = 280;
@@ -43,6 +44,10 @@ export default class Player {
     this.spinAttackRadius = 160;
     this.spinAttackDamage = 1;
 
+    this.ultimateStacks = window.ultimateStacks ?? 0;
+    this.ultimateMaxStacks = 20;
+    this.ultimateActive = false;
+
     this.dashSpeed = 860;
     this.airDashSpeed = 760;
     this.dashDuration = 180;
@@ -54,14 +59,18 @@ export default class Player {
     this.afterimageInterval = 30; // ms
     this.nextAfterimageAt = 0;
 
-    this.maxHealth = 10;
+    const hpMult = { easy: 1.5, normal: 1.0, hard: 0.7, dorai: 0.3 }[window.difficulty] ?? 1.0;
+    this.maxHealth = Math.max(1, Math.round(10 * hpMult));
     this.health = this.maxHealth;
     this.invulnerableUntil = 0;
 
+    // hard/dorai: 자연회복 없음
+    const regenDisabled = window.difficulty === 'hard' || window.difficulty === 'dorai';
     this.regenTimer = scene.time.addEvent({
       delay: 10000,
       loop: true,
       callback: () => {
+        if (regenDisabled) return;
         if (this.health > 0 && this.health < this.maxHealth) {
           this.health = Math.min(this.maxHealth, this.health + 1);
           this.syncHealthBar();
@@ -106,14 +115,50 @@ export default class Player {
       const timeTxt = scene.add.text(sx + boxW / 2, startY + 40, '', { fontFamily: 'Arial', fontSize: '12px', color: '#aaccff' }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(1013);
       return { overlay, timeTxt, boxH };
     });
+
+    // 궁극기 스택 UI
+    const ux = 20, uy = 628, uw = 3 * boxW + 2 * gap, uh = 14;
+    scene.add.rectangle(ux, uy, uw, uh, 0x080c14, 0.9).setOrigin(0, 0).setScrollFactor(0).setDepth(1010);
+    this.ultBarFill = scene.add.rectangle(ux, uy, 0, uh, 0xffdd00, 1).setOrigin(0, 0).setScrollFactor(0).setDepth(1011);
+    scene.add.rectangle(ux, uy, uw, uh, 0xffdd00, 0).setOrigin(0, 0).setScrollFactor(0).setDepth(1012).setStrokeStyle(1.5, 0xffdd00, 0.6);
+    this.ultLabel = scene.add.text(ux + uw / 2, uy + 7, 'R  0 / 30', {
+      fontFamily: 'Arial', fontSize: '10px', color: '#ffee88'
+    }).setOrigin(0.5, 0.5).setScrollFactor(0).setDepth(1013);
   }
 
   update(time, delta) {
     const body = this.sprite.body;
     const onFloor = body.onFloor();
 
+    if (this.ultimateActive) {
+      body.setVelocityX(0);
+
+      if (this.cursors.left.isDown) {
+        body.setVelocityX(-this.speed);
+        this.facing = -1;
+      } else if (this.cursors.right.isDown) {
+        body.setVelocityX(this.speed);
+        this.facing = 1;
+      }
+
+      if (Phaser.Input.Keyboard.JustDown(this.cursors.up) && onFloor) {
+        body.setVelocityY(this.jumpVelocity);
+      }
+
+      this.syncVisuals();
+      this.syncHealthBar();
+      this.syncCooldownUI(time);
+      return;
+    }
+
     if (onFloor) {
       this.canAirDash = true;
+    }
+
+    // R: 궁극기 발동
+    if (Phaser.Input.Keyboard.JustDown(this.cursors.ultimate) && this.ultimateStacks >= this.ultimateMaxStacks) {
+      this.startUltimate(time);
+      return;
     }
 
     if (this.groundSmashActive) {
@@ -222,6 +267,17 @@ export default class Player {
       slot.overlay.setSize(slot.overlay.width, slot.boxH * ratio);
       slot.timeTxt.setText(remaining > 0 ? (remaining / 1000).toFixed(1) + 's' : '');
     });
+
+    // 궁극기 바 업데이트
+    if (this.ultBarFill) {
+      const totalW = 3 * 68 + 2 * 8;
+      const ratio = this.ultimateStacks / this.ultimateMaxStacks;
+      this.ultBarFill.setSize(totalW * ratio, 14);
+      const ready = this.ultimateStacks >= this.ultimateMaxStacks;
+      this.ultBarFill.setFillStyle(ready ? 0xffffff : 0xffdd00, ready ? 0.9 : 1);
+      this.ultLabel.setText(ready ? '★ R  READY ★' : `R  ${this.ultimateStacks} / ${this.ultimateMaxStacks}`);
+      this.ultLabel.setColor(ready ? '#ffffff' : '#ffee88');
+    }
   }
 
   syncVisuals() {
@@ -276,6 +332,11 @@ export default class Player {
         if (enemy && !hitEnemies.has(enemy)) {
           hitEnemies.add(enemy);
           enemy.takeDamage(damage);
+          // 일반 공격 적중 시 궁극기 스택 증가
+          if (this.ultimateStacks < this.ultimateMaxStacks) {
+            this.ultimateStacks = Math.min(this.ultimateMaxStacks, this.ultimateStacks + 1);
+            window.ultimateStacks = this.ultimateStacks;
+          }
         }
       });
     }
@@ -288,6 +349,91 @@ export default class Player {
       if (this.weaponSprite && this.weaponSprite.active) {
         this.weaponSprite.setAngle(0);
       }
+    });
+  }
+
+  startUltimate(time) {
+    this.ultimateActive = true;
+    this.ultimateStacks = 0;
+    this.weaponSprite.setVisible(false);
+
+    const duration = 1800;
+    const radius = this.spinAttackRadius * 2; // Q/E의 2배 범위
+    const damage = this.spinAttackDamage * 2;
+    const cx = this.sprite.x;
+    const cy = this.sprite.y;
+    const hitDone = new Set();
+
+    // 카메라 연출
+    this.scene.cameras.main.shake(duration, 0.004);
+    this.sprite.setTint(0xffee00);
+
+    // 칼춤: 8개의 검 잔상이 빠르게 회전
+    const swordCount = 8;
+    const swords = [];
+    for (let i = 0; i < swordCount; i++) {
+      const sw = this.scene.add.image(cx, cy, 'weapon-sword');
+      sw.setDisplaySize(78, 72);
+      sw.setAlpha(0.85);
+      sw.setDepth(8);
+      swords.push({ img: sw, offset: (i / swordCount) * Math.PI * 2 });
+    }
+
+    // 검들이 회전하며 범위 확장
+    const prog = { t: 0 };
+    this.scene.tweens.add({
+      targets: prog,
+      t: 1,
+      duration,
+      ease: 'Sine.easeInOut',
+      onUpdate: () => {
+        const speed = 2 + prog.t * 4; // 회전 속도 절반
+        const r = 50 + prog.t * 90;   // 반경 점점 커짐
+        swords.forEach((s, i) => {
+          s.offset += speed * 0.04;
+          const ax = this.sprite.x + Math.cos(s.offset) * r;
+          const ay = this.sprite.y + Math.sin(s.offset) * r;
+          s.img.setPosition(ax, ay);
+          s.img.setAngle(Phaser.Math.RadToDeg(s.offset) + 90);
+          s.img.setTint(prog.t > 0.7 ? 0xffffff : 0xffcc44);
+          s.img.setAlpha(0.7 + Math.sin(s.offset * 3) * 0.3);
+        });
+      },
+      onComplete: () => {
+        swords.forEach(s => s.img.destroy());
+      }
+    });
+
+    // 6번 타격 판정 (간격 250ms)
+    for (let wave = 0; wave < 6; wave++) {
+      this.scene.time.delayedCall(wave * 280, () => {
+        if (!this.scene?.enemySprites) return;
+        this.scene.enemySprites.children.iterate((sp) => {
+          if (!sp?.active) return;
+          const enemy = sp.enemyRef;
+          if (!enemy || enemy.defeated || hitDone.has(`${enemy}-${wave}`)) return;
+          const dist = Phaser.Math.Distance.Between(this.sprite.x, this.sprite.y, sp.x, sp.y);
+          if (dist <= radius) {
+            hitDone.add(`${enemy}-${wave}`);
+            enemy.takeDamage(damage);
+          }
+        });
+      });
+    }
+
+    // 종료
+    this.scene.time.delayedCall(duration, () => {
+      this.ultimateActive = false;
+      this.weaponSprite.setVisible(true);
+      this.sprite.clearTint();
+      // 마지막 대폭발
+      const boom = this.scene.add.graphics().setDepth(7);
+      boom.lineStyle(5, 0xffffff, 1);
+      boom.strokeCircle(this.sprite.x, this.sprite.y, radius);
+      boom.lineStyle(3, 0xffee44, 0.7);
+      boom.strokeCircle(this.sprite.x, this.sprite.y, radius * 0.6);
+      this.scene.tweens.add({ targets: boom, alpha: 0, scaleX: 1.5, scaleY: 1.5, duration: 400, onComplete: () => boom.destroy() });
+      this.scene.cameras.main.flash(180, 255, 240, 100, true);
     });
   }
 
@@ -380,6 +526,9 @@ export default class Player {
   startSpinAttack(time, direction) {
     this.spinAttackActive = true;
     this.spinAttackCooldownUntil = time + 4000;
+    // Q/E 사용 시 궁극기 스택 +2
+    this.ultimateStacks = Math.min(this.ultimateMaxStacks, this.ultimateStacks + 2);
+    window.ultimateStacks = this.ultimateStacks;
 
     // 5타 콤보: 720도를 144도 간격으로 나눔, 평타의 1.5배 데미지
     const hitSets = [new Set(), new Set(), new Set(), new Set(), new Set()];
@@ -429,7 +578,6 @@ export default class Player {
             hitsDone[i] = true;
             this.checkSpinHits(hitSets[i], radius, damage);
             this.scene.cameras.main.shake(45, 0.003);
-            this.spawnSlashFlash(direction, false);
           }
         });
       },
@@ -437,7 +585,6 @@ export default class Player {
         // 5타 (마지막): 큰 슬래시 플래시
         this.checkSpinHits(hitSets[4], radius, damage);
         this.scene.cameras.main.shake(110, 0.006);
-        this.spawnSlashFlash(direction, true);
 
         this.sprite.setAngle(0);
         this.sprite.body.allowGravity = true;
@@ -519,13 +666,16 @@ export default class Player {
   }
 
   takeDamage(amount, time = 0) {
+    if (window.debugMode) return;
     if (time < this.invulnerableUntil) {
       return;
     }
 
+    // easy: 받는 피해 50% 감소
+    const actualAmount = window.difficulty === 'easy' ? Math.max(1, Math.floor(amount * 0.5)) : amount;
     this.invulnerableUntil = time + 500;
     const previousHealth = this.health;
-    this.health = Math.max(0, this.health - amount);
+    this.health = Math.max(0, this.health - actualAmount);
     this.sprite.setTint(0xff7a7a);
     this.healthBarFill.setFillStyle(this.health <= 2 ? 0xff6b6b : 0x6ee07b, 1);
     

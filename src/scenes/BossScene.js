@@ -19,6 +19,7 @@ export default class BossScene extends Phaser.Scene {
   create() {
     this.ending = false;
     this.worldWidth = 1600;
+    const bossHealthMultiplier = 1.8;
 
     this.bossMusic = this.sound.add('boss-bgm', { loop: false });
     this.bossMusic.on('complete', () => {
@@ -66,7 +67,7 @@ export default class BossScene extends Phaser.Scene {
     
     this.boss = new Enemy(this, this.worldWidth - 420, 500, {
       type: 'boss',
-      health: 20,
+      health: Math.round(20 * bossHealthMultiplier),
       damage: 2,
       speed: 138,
       attackCooldown: 620,

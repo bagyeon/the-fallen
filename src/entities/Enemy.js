@@ -88,7 +88,12 @@ export default class Enemy {
     if (this.type === 'boss' && !this.bossShielded && time >= this.bossLaserNextAt) {
       const laserRange = this.attackRange * 5;
       if (distance <= laserRange) {
-        const laserInterval = this.bossPhase === 2 ? 900 : 2000;
+        let laserInterval;
+        if (window.difficulty === 'dorai') {
+          laserInterval = this.bossPhase === 2 ? 100 : 1000;
+        } else {
+          laserInterval = this.bossPhase === 2 ? 900 : 2000;
+        }
         this.bossLaserNextAt = time + laserInterval;
         this.bossLaserAttack(player, time);
       }
@@ -507,7 +512,7 @@ export default class Enemy {
     if (this.type === 'boss' && this.bossPhase === 2) {
       this.sprite.setTint(0xff6600);
     } else {
-      this.resetTint();
+      this.sprite.clearTint();
     }
   }
 

@@ -50,8 +50,13 @@ export default class StageScene extends Phaser.Scene {
     this.enemySprites = this.physics.add.group();
     this.wave2Triggered = false;
     this.wave2Spawned = false;
+    // dorai: 적 대미지·속도 2배
+    const doraiMult = window.difficulty === 'dorai' ? 2 : 1;
     this.enemies = stageConfig.enemies.map((enemyConfig) => {
-      const enemy = new Enemy(this, enemyConfig.x, enemyConfig.y ?? 400, enemyConfig);
+      const cfg = doraiMult > 1
+        ? { ...enemyConfig, damage: (enemyConfig.damage || 1) * doraiMult, speed: (enemyConfig.speed || 80) * doraiMult }
+        : enemyConfig;
+      const enemy = new Enemy(this, cfg.x, cfg.y ?? 400, cfg);
       this.enemySprites.add(enemy.sprite);
       this.physics.add.collider(enemy.sprite, ground);
       this.physics.add.collider(enemy.sprite, platformGroup);
@@ -124,8 +129,8 @@ export default class StageScene extends Phaser.Scene {
         skyColor: 0x1a2436,
         worldWidth: 4200,
         enemies: [
-          { x: 720, health: 4, damage: 2, speed: 92, attackCooldown: 820, detectionRadius: 980, textureKey: 'enemy-elite', type: 'elite' },
-          { x: 1500, health: 4, damage: 2, speed: 98, attackCooldown: 780, detectionRadius: 1000, textureKey: 'enemy-elite', type: 'elite' },
+        { x: 720,  health: 4, damage: 2, speed: 92,  attackCooldown: 820, detectionRadius: 980,  textureKey: 'enemy-elite', type: 'elite' },
+          { x: 1500, health: 4, damage: 2, speed: 98,  attackCooldown: 780, detectionRadius: 1000, textureKey: 'enemy-elite', type: 'elite' },
           { x: 2440, health: 4, damage: 2, speed: 102, attackCooldown: 760, detectionRadius: 1020, textureKey: 'enemy-elite', type: 'elite' },
           { x: 3400, health: 4, damage: 2, speed: 108, attackCooldown: 740, detectionRadius: 1040, textureKey: 'enemy-elite', type: 'elite' }
         ]
@@ -154,11 +159,11 @@ export default class StageScene extends Phaser.Scene {
         { x: 3940, y: 548, w: 210 }, // 출구 앞 낮은 바닥
       ],
       enemies: [
-        { x: 600,  y: 370, health: 2, damage: 1, speed: 78,  attackCooldown: 880, detectionRadius: 880, textureKey: 'enemy-basic', type: 'basic' },
-        { x: 1420, y: 330, health: 2, damage: 1, speed: 82,  attackCooldown: 860, detectionRadius: 900, textureKey: 'enemy-basic', type: 'basic' },
-        { x: 1960, y: 330, health: 2, damage: 1, speed: 80,  attackCooldown: 870, detectionRadius: 910, textureKey: 'enemy-basic', type: 'basic' },
-        { x: 2800, y: 310, health: 3, damage: 1, speed: 86,  attackCooldown: 840, detectionRadius: 940, textureKey: 'enemy-basic', type: 'basic' },
-        { x: 3650, y: 270, health: 3, damage: 1, speed: 90,  attackCooldown: 820, detectionRadius: 960, textureKey: 'enemy-basic', type: 'basic' },
+        { x: 600,  y: 370, health: 2, damage: 2, speed: 78,  attackCooldown: 880, detectionRadius: 880, textureKey: 'enemy-basic', type: 'basic' },
+        { x: 1420, y: 330, health: 2, damage: 2, speed: 82,  attackCooldown: 860, detectionRadius: 900, textureKey: 'enemy-basic', type: 'basic' },
+        { x: 1960, y: 330, health: 2, damage: 2, speed: 80,  attackCooldown: 870, detectionRadius: 910, textureKey: 'enemy-basic', type: 'basic' },
+        { x: 2800, y: 310, health: 3, damage: 2, speed: 86,  attackCooldown: 840, detectionRadius: 940, textureKey: 'enemy-basic', type: 'basic' },
+        { x: 3650, y: 270, health: 3, damage: 2, speed: 90,  attackCooldown: 820, detectionRadius: 960, textureKey: 'enemy-basic', type: 'basic' },
       ]
     };
   }
@@ -175,7 +180,8 @@ export default class StageScene extends Phaser.Scene {
     this.statusText.setText('\u2757 \uad74\uc6d5\uc5d0\uc11c \uc801\uc774 \ub098\ud0c0\ub09c\ub2e4!');
 
     this.time.delayedCall(1000, () => {
-      const wave2Config = { health: 4, damage: 2, speed: 98, attackCooldown: 780, detectionRadius: 1000, textureKey: 'enemy-elite', type: 'elite' };
+        const doraiMult = window.difficulty === 'dorai' ? 2 : 1;
+        const wave2Config = { health: 4, damage: 2 * doraiMult, speed: 98 * doraiMult, attackCooldown: 780, detectionRadius: 1000, textureKey: 'enemy-elite', type: 'elite' };
       const camX = this.cameras.main.scrollX;
       const spawnXs = Array.from({ length: 10 }, (_, i) => camX + 80 + i * 120);
 

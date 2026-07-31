@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import BootScene from './scenes/BootScene.js';
 import TitleScene from './scenes/TitleScene.js';
+import Title2Scene from './scenes/Title2Scene.js';
 import StageScene from './scenes/StageScene.js';
 import BossScene from './scenes/BossScene.js';
 import EndScene from './scenes/EndScene.js';
@@ -23,7 +24,7 @@ const config = {
     height: 720
   },
   physics: { default: 'arcade', arcade: { gravity: { y: 1100 }, debug: false } },
-  scene: [BootScene, TitleScene, StageScene, BossScene, EndScene]
+  scene: [BootScene, TitleScene, Title2Scene, StageScene, BossScene, EndScene]
 };
 
 window.game = new Phaser.Game(config);
