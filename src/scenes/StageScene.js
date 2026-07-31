@@ -19,9 +19,10 @@ export default class StageScene extends Phaser.Scene {
     this.cameras.main.setBounds(0, 0, this.worldWidth, 720);
     this.cameras.main.roundPixels = true;
 
-    const bgTexture = this.textures.get('game-background').getSourceImage();
+    const bgKey = this.stage === 1 ? 'stage1-bg' : this.stage === 2 ? 'stage2-bg' : 'game-background';
+    const bgTexture = this.textures.get(bgKey).getSourceImage();
     const bgScale = 720 / bgTexture.height;
-    const background = this.add.tileSprite(this.worldWidth / 2, 360, this.worldWidth, 720, 'game-background');
+    const background = this.add.tileSprite(this.worldWidth / 2, 360, this.worldWidth, 720, bgKey);
     background.setTileScale(bgScale, bgScale);
     background.setDepth(-1000);
 
@@ -29,21 +30,40 @@ export default class StageScene extends Phaser.Scene {
     ground.setDisplaySize(this.worldWidth, 68);
     ground.refreshBody();
 
+    // 플랫폼 생성 (스테이지별 텍스처 지원)
+    const platformGroup = this.physics.add.staticGroup();
+    if (stageConfig.platforms) {
+      const platTex = stageConfig.platformTexture || 'platform-tile';
+      stageConfig.platforms.forEach(p => {
+        const plat = platformGroup.create(p.x, p.y, platTex);
+        plat.setDisplaySize(p.w, 24);
+        plat.refreshBody();
+      });
+    }
+
     this.player = new Player(this, 140, 520);
     this.physics.add.collider(this.player.sprite, ground);
+    this.physics.add.collider(this.player.sprite, platformGroup);
 
     this.enemySprites = this.physics.add.group();
     this.enemies = stageConfig.enemies.map((enemyConfig) => {
-      const enemy = new Enemy(this, enemyConfig.x, 520, enemyConfig);
+      const enemy = new Enemy(this, enemyConfig.x, enemyConfig.y ?? 400, enemyConfig);
       this.enemySprites.add(enemy.sprite);
       this.physics.add.collider(enemy.sprite, ground);
+      this.physics.add.collider(enemy.sprite, platformGroup);
       return enemy;
     });
 
     this.physics.add.overlap(this.enemySprites, this.player.sprite, (enemySprite) => {
       const enemy = enemySprite.enemyRef;
-      if (enemy) {
-        enemy.tryAttack(this.player, this.time.now);
+      if (!enemy) return;
+      const now = this.time.now;
+      // 대시 충돌 데미지 (좌클릭 없이)
+      if (now < this.player.dashingUntil && now >= (enemy._dashHitCooldown || 0)) {
+        enemy._dashHitCooldown = now + 400;
+        enemy.takeDamage(1);
+      } else {
+        enemy.tryAttack(this.player, now);
       }
     });
 
@@ -98,13 +118,33 @@ export default class StageScene extends Phaser.Scene {
       };
     }
 
+    // Stage 1: 숲 테마 — 뿌리·가지·수풀을 따라 오르내리는 지형
     return {
-      skyColor: 0x223047,
-      worldWidth: 3600,
+      skyColor: 0x0b1a10,
+      worldWidth: 4200,
+      platformTexture: 'forest-platform-tile',
+      platforms: [
+        { x: 340,  y: 574, w: 210 }, // 낮은 뿌리 둔덕
+        { x: 600,  y: 508, w: 160 }, // 작은 돌출 바위
+        { x: 870,  y: 434, w: 230 }, // 굵은 나뭇가지
+        { x: 1150, y: 544, w: 175 }, // 숲 바닥 웅덩이 옆
+        { x: 1420, y: 462, w: 210 }, // 중간 가지
+        { x: 1700, y: 384, w: 170 }, // 높은 가지 (수관)
+        { x: 1960, y: 464, w: 190 }, // 완만한 내리막
+        { x: 2240, y: 392, w: 200 }, // 다시 수관 높이
+        { x: 2530, y: 522, w: 170 }, // 숲 바닥 착지
+        { x: 2800, y: 446, w: 220 }, // 중간 가지
+        { x: 3080, y: 370, w: 175 }, // 높은 수관
+        { x: 3370, y: 472, w: 200 }, // 내리막 가지
+        { x: 3650, y: 402, w: 185 }, // 막바지 높은 지점
+        { x: 3940, y: 548, w: 210 }, // 출구 앞 낮은 바닥
+      ],
       enemies: [
-        { x: 760, health: 2, damage: 1, speed: 74, attackCooldown: 900, detectionRadius: 900, textureKey: 'enemy-basic', type: 'basic' },
-        { x: 1620, health: 2, damage: 1, speed: 78, attackCooldown: 880, detectionRadius: 920, textureKey: 'enemy-basic', type: 'basic' },
-        { x: 2580, health: 2, damage: 1, speed: 82, attackCooldown: 860, detectionRadius: 940, textureKey: 'enemy-basic', type: 'basic' }
+        { x: 600,  y: 370, health: 2, damage: 1, speed: 78,  attackCooldown: 880, detectionRadius: 880, textureKey: 'enemy-basic', type: 'basic' },
+        { x: 1420, y: 330, health: 2, damage: 1, speed: 82,  attackCooldown: 860, detectionRadius: 900, textureKey: 'enemy-basic', type: 'basic' },
+        { x: 1960, y: 330, health: 2, damage: 1, speed: 80,  attackCooldown: 870, detectionRadius: 910, textureKey: 'enemy-basic', type: 'basic' },
+        { x: 2800, y: 310, health: 3, damage: 1, speed: 86,  attackCooldown: 840, detectionRadius: 940, textureKey: 'enemy-basic', type: 'basic' },
+        { x: 3650, y: 270, health: 3, damage: 1, speed: 90,  attackCooldown: 820, detectionRadius: 960, textureKey: 'enemy-basic', type: 'basic' },
       ]
     };
   }

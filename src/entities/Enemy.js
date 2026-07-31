@@ -16,13 +16,14 @@ export default class Enemy {
     this.defeated = false;
     this.nextAttackAt = null;
 
-    this.healthBarWidth = this.type === 'boss' ? 56 : 42;
+    this.healthBarWidth = this.type === 'boss' ? 84 : 63;
     this.healthBarHeight = 6;
-    this.healthBarOffsetY = this.type === 'boss' ? -60 : -48;
+    this.healthBarOffsetY = this.type === 'boss' ? -90 : -72;
 
     this.sprite = scene.physics.add.sprite(x, y, this.textureKey);
     this.sprite.setCollideWorldBounds(true);
     this.sprite.setDepth(3);
+    this.sprite.setScale(1.5);
     this.sprite.body.setSize(30, 40).setOffset(9, 14);
     this.sprite.enemyRef = this;
 
@@ -39,12 +40,19 @@ export default class Enemy {
     this.rangeIndicator.setVisible(false);
 
     if (this.type === 'boss') {
-      this.sprite.setScale(1.35);
+      this.laserRangeGraphics = scene.add.graphics();
+      this.laserRangeGraphics.setDepth(1);
+    }
+
+    if (this.type === 'boss') {
+      this.sprite.setScale(2.025);
       this.sprite.body.setSize(40, 54).setOffset(16, 18);
       this.bossActionCooldown = 0;
       this.bossNextActionAt = 0;
+      this.bossLaserNextAt = 0;
       this.bossInAction = false;
       this.bossPhase = 1;
+      this.damageReduction = 0;
       this.bossShielded = false;
       this.bossShieldActivated = false; // 방어막 한 번만 활성화
       this.summonedEnemies = [];
@@ -74,6 +82,16 @@ export default class Enemy {
     this.sprite.setFlipX(direction < 0);
     this.syncHealthBar();
 
+    // 보스 레이저: 근접 사거리의 5배 안에 있을 때만 발동
+    if (this.type === 'boss' && !this.bossShielded && time >= this.bossLaserNextAt) {
+      const laserRange = this.attackRange * 5;
+      if (distance <= laserRange) {
+        const laserInterval = this.bossPhase === 2 ? 900 : 2000;
+        this.bossLaserNextAt = time + laserInterval;
+        this.bossLaserAttack(player, time);
+      }
+    }
+
     if (distance <= this.detectionRadius) {
       if (distance > this.attackRange) {
         this.sprite.setVelocityX(direction * speed);
@@ -83,12 +101,7 @@ export default class Enemy {
         this.sprite.setVelocityX(0);
         // 보스 특수 공격 로직
         if (this.type === 'boss' && time >= this.bossNextActionAt && !this.bossInAction) {
-          const actionRoll = Math.random();
-          if (actionRoll < 0.3) {
-            this.executeBossAction(player, time);
-          } else {
-            this.updateAttackCycle(player, time);
-          }
+          this.executeBossAction(player, time);
         } else {
           this.updateAttackCycle(player, time);
         }
@@ -149,9 +162,12 @@ export default class Enemy {
       return;
     }
 
+    const reduction = (this.type === 'boss' && this.damageReduction) ? this.damageReduction : 0;
+    const actualAmount = Math.max(1, Math.floor(amount * (1 - reduction)));
     const previousHealth = this.health;
-    this.health = Math.max(0, this.health - amount);
+    this.health = Math.max(0, this.health - actualAmount);
     this.sprite.setTint(0xff4d4d);
+    this.scene.cameras.main.shake(55, 0.0035);
     
     // 체력바 흔들림 효과
     const originalBarX = this.healthBarFill.x;
@@ -214,6 +230,10 @@ export default class Enemy {
     if (this.rangeIndicator) {
       this.rangeIndicator.destroy();
     }
+    if (this.laserRangeGraphics) {
+      this.laserRangeGraphics.destroy();
+      this.laserRangeGraphics = null;
+    }
 
     // 보스는 스프라이트를 바로 제거하지 않음 (씬에서 디졸브 애니메이션 처리)
     if (this.type !== 'boss') {
@@ -239,6 +259,13 @@ export default class Enemy {
     this.healthBarBg.setPosition(barX, barY);
     this.healthBarFill.setPosition(barX, barY);
     this.updateHealthBarFill();
+
+    if (this.type === 'boss' && this.laserRangeGraphics) {
+      const lr = this.attackRange * 5;
+      this.laserRangeGraphics.clear();
+      this.laserRangeGraphics.lineStyle(1.5, 0x00cfff, 0.45);
+      this.laserRangeGraphics.strokeCircle(this.sprite.x, this.sprite.y, lr);
+    }
   }
 
   updateHealthBarFill() {
@@ -312,7 +339,7 @@ export default class Enemy {
     }
 
     // 페이즈 2에서는 스킬 텀을 더 짧게
-    this.bossNextActionAt = time + (this.bossPhase === 2 ? 1500 : 3500);
+    this.bossNextActionAt = time + (this.bossPhase === 2 ? 1000 : 3500);
   }
 
   bossDashAttack(player, time) {
@@ -432,7 +459,7 @@ export default class Enemy {
         // 각도 차이가 15도 이내면 맞음 (범위: 50px)
         const angleDiff = Phaser.Math.Angle.Normalize(playerAngle - angle);
         if (Math.abs(angleDiff) < 0.3 && distToPlayer < 150) {
-          player.takeDamage(3, time);
+          player.takeDamage(2, time);
         }
       }
       
@@ -499,7 +526,7 @@ export default class Enemy {
     this.bossPhase = 2;
     this.bossShielded = false;
     
-    // 체력 회복 안 함 - 잡몹 처치 후 현재 체력 유지
+    this.health = Math.min(this.maxHealth, this.health + Math.floor(this.maxHealth / 2));
     this.updateHealthBarFill();
     
     // 근접 공격을 더 자주하도록 쿨타임 단축

@@ -18,7 +18,7 @@ export default class BossScene extends Phaser.Scene {
 
   create() {
     this.ending = false;
-    this.worldWidth = 4800;
+    this.worldWidth = 1600;
 
     this.bossMusic = this.sound.add('boss-bgm', { loop: false });
     this.bossMusic.on('complete', () => {
@@ -47,9 +47,9 @@ export default class BossScene extends Phaser.Scene {
     this.cameras.main.setBounds(0, 0, this.worldWidth, 720);
     this.cameras.main.roundPixels = true;
 
-    const bgTexture = this.textures.get('game-background').getSourceImage();
+    const bgTexture = this.textures.get('boss-bg').getSourceImage();
     const bgScale = 720 / bgTexture.height;
-    const background = this.add.tileSprite(this.worldWidth / 2, 360, this.worldWidth, 720, 'game-background');
+    const background = this.add.tileSprite(this.worldWidth / 2, 360, this.worldWidth, 720, 'boss-bg');
     background.setTileScale(bgScale, bgScale);
     background.setDepth(-1000);
 
@@ -79,8 +79,14 @@ export default class BossScene extends Phaser.Scene {
 
     this.physics.add.overlap(this.enemySprites, this.player.sprite, (enemySprite) => {
       const enemy = enemySprite.enemyRef;
-      if (enemy) {
-        enemy.tryAttack(this.player, this.time.now);
+      if (!enemy) return;
+      const now = this.time.now;
+      // 대시 충돌 데미지 (좌클릭 없이)
+      if (now < this.player.dashingUntil && now >= (enemy._dashHitCooldown || 0)) {
+        enemy._dashHitCooldown = now + 400;
+        enemy.takeDamage(2);
+      } else {
+        enemy.tryAttack(this.player, now);
       }
     });
 
@@ -221,8 +227,13 @@ export default class BossScene extends Phaser.Scene {
     
     this.physics.add.overlap(this.enemySprites, this.player.sprite, (enemySprite) => {
       const enemy = enemySprite.enemyRef;
-      if (enemy) {
-        enemy.tryAttack(this.player, this.time.now);
+      if (!enemy) return;
+      const now = this.time.now;
+      if (now < this.player.dashingUntil && now >= (enemy._dashHitCooldown || 0)) {
+        enemy._dashHitCooldown = now + 400;
+        enemy.takeDamage(2);
+      } else {
+        enemy.tryAttack(this.player, now);
       }
     });
     

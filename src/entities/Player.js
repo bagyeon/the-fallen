@@ -6,12 +6,13 @@ export default class Player {
     this.sprite = scene.physics.add.sprite(x, y, 'player-melee');
     this.sprite.setCollideWorldBounds(true);
     this.sprite.setDepth(4);
+    this.sprite.setScale(1.5);
     this.sprite.body.setSize(30, 42).setOffset(9, 18);
 
     this.weaponSprite = scene.add.image(x, y, 'weapon-sword');
     this.weaponSprite.setDepth(5);
     this.weaponSprite.setOrigin(0.35, 0.82);
-    this.weaponSprite.setDisplaySize(52, 48);
+    this.weaponSprite.setDisplaySize(78, 72);
     this.weaponSprite.setAngle(0);
     this.weaponPivotY = 0.82;
 
@@ -20,8 +21,7 @@ export default class Player {
       down: Phaser.Input.Keyboard.KeyCodes.S,
       left: Phaser.Input.Keyboard.KeyCodes.A,
       right: Phaser.Input.Keyboard.KeyCodes.D,
-      dashRight: Phaser.Input.Keyboard.KeyCodes.Z,
-      dashLeft: Phaser.Input.Keyboard.KeyCodes.C,
+      shift: Phaser.Input.Keyboard.KeyCodes.SHIFT,
       spinRight: Phaser.Input.Keyboard.KeyCodes.E,
       spinLeft: Phaser.Input.Keyboard.KeyCodes.Q
     });
@@ -40,15 +40,13 @@ export default class Player {
 
     this.spinAttackActive = false;
     this.spinAttackCooldownUntil = 0;
-    this.lastEKeyTime = 0;
-    this.lastQKeyTime = 0;
-    this.spinAttackRadius = 110;
+    this.spinAttackRadius = 160;
     this.spinAttackDamage = 1;
 
     this.dashSpeed = 860;
     this.airDashSpeed = 760;
     this.dashDuration = 180;
-    this.dashCooldown = 900;
+    this.dashCooldown = 500;
     this.dashingUntil = 0;
     this.nextDashAt = 0;
     this.dashDirection = 1;
@@ -71,9 +69,9 @@ export default class Player {
       }
     });
 
-    this.healthBarWidth = 44;
+    this.healthBarWidth = 66;
     this.healthBarHeight = 6;
-    this.healthBarOffsetY = -50;
+    this.healthBarOffsetY = -75;
 
     this.healthBarBg = scene.add.rectangle(x - this.healthBarWidth / 2, y + this.healthBarOffsetY, this.healthBarWidth, this.healthBarHeight, 0x1f2430, 0.9);
     this.healthBarBg.setOrigin(0, 0.5);
@@ -111,25 +109,13 @@ export default class Player {
       return;
     }
 
-    // 공중 E/Q 더블탭 → 720도 회전 공격
+    // 공중 E/Q 한 번 → 720도 회전 공격
     if (!onFloor && !this.spinAttackActive) {
-      if (Phaser.Input.Keyboard.JustDown(this.cursors.spinRight)) {
-        const gap = time - this.lastEKeyTime;
-        if (gap > 50 && gap < 350 && time >= this.spinAttackCooldownUntil) {
-          this.startSpinAttack(time, 1);
-          this.lastEKeyTime = 0;
-        } else {
-          this.lastEKeyTime = time;
-        }
+      if (Phaser.Input.Keyboard.JustDown(this.cursors.spinRight) && time >= this.spinAttackCooldownUntil) {
+        this.startSpinAttack(time, 1);
       }
-      if (Phaser.Input.Keyboard.JustDown(this.cursors.spinLeft)) {
-        const gap = time - this.lastQKeyTime;
-        if (gap > 50 && gap < 350 && time >= this.spinAttackCooldownUntil) {
-          this.startSpinAttack(time, -1);
-          this.lastQKeyTime = 0;
-        } else {
-          this.lastQKeyTime = time;
-        }
+      if (Phaser.Input.Keyboard.JustDown(this.cursors.spinLeft) && time >= this.spinAttackCooldownUntil) {
+        this.startSpinAttack(time, -1);
       }
     }
 
@@ -141,9 +127,12 @@ export default class Player {
     }
 
     if (time >= this.nextDashAt) {
-      if (Phaser.Input.Keyboard.JustDown(this.cursors.dashRight)) {
+      const shiftJust = Phaser.Input.Keyboard.JustDown(this.cursors.shift);
+      const rightJust = Phaser.Input.Keyboard.JustDown(this.cursors.right);
+      const leftJust  = Phaser.Input.Keyboard.JustDown(this.cursors.left);
+      if ((shiftJust && this.cursors.right.isDown) || (this.cursors.shift.isDown && rightJust)) {
         this.startDash(time, 1);
-      } else if (Phaser.Input.Keyboard.JustDown(this.cursors.dashLeft)) {
+      } else if ((shiftJust && this.cursors.left.isDown) || (this.cursors.shift.isDown && leftJust)) {
         this.startDash(time, -1);
       }
     }
@@ -170,10 +159,11 @@ export default class Player {
         this.sprite.clearTint();
       }
 
-      if (this.cursors.left.isDown) {
+      const dashReady = time >= this.nextDashAt;
+      if (this.cursors.left.isDown && (!this.cursors.shift.isDown || !dashReady)) {
         body.setVelocityX(-this.speed);
         this.facing = -1;
-      } else if (this.cursors.right.isDown) {
+      } else if (this.cursors.right.isDown && (!this.cursors.shift.isDown || !dashReady)) {
         body.setVelocityX(this.speed);
         this.facing = 1;
       }
@@ -352,12 +342,14 @@ export default class Player {
 
   startSpinAttack(time, direction) {
     this.spinAttackActive = true;
-    this.spinAttackCooldownUntil = time + 2000;
+    this.spinAttackCooldownUntil = time + 5000;
 
-    const hitSet1 = new Set();
-    const hitSet2 = new Set();
+    // 5타 콤보: 720도를 144도 간격으로 나눔, 평타의 1.5배 데미지
+    const hitSets = [new Set(), new Set(), new Set(), new Set(), new Set()];
     const radius = this.spinAttackRadius;
-    const damage = this.spinAttackDamage;
+    const damage = this.spinAttackDamage * 0.75;
+    const hitThresholds = [144, 288, 432, 576]; // 5번째는 onComplete 처리
+    const hitsDone = [false, false, false, false];
 
     this.sprite.body.setVelocityX(0);
     this.sprite.body.setVelocityY(0);
@@ -365,42 +357,50 @@ export default class Player {
     this.weaponSprite.setVisible(false);
     this.sprite.setTint(direction > 0 ? 0xff9944 : 0x44aaff);
 
-    let hit1Done = false;
     const prog = { angle: 0 };
     const totalAngle = direction * 720;
 
     this.scene.tweens.add({
       targets: prog,
       angle: totalAngle,
-      duration: 680,
+      duration: 780,
       ease: 'Sine.easeInOut',
       onUpdate: () => {
         this.sprite.setAngle(prog.angle % 360);
 
-        // 잔상 효과
         const now = this.scene.time.now;
+        // 검 잔상: 플레이어 주변 원호를 따라 검이 회전
         if (now >= (this._spinNextAfterimage || 0)) {
-          this._spinNextAfterimage = now + 40;
-          const ghost = this.scene.add.image(this.sprite.x, this.sprite.y, this.sprite.texture.key);
-          ghost.setAngle(this.sprite.angle);
-          ghost.setFlipX(this.sprite.flipX);
-          ghost.setAlpha(0.45);
-          ghost.setTint(direction > 0 ? 0xff6622 : 0x2288ff);
-          ghost.setDepth(3);
-          this.scene.tweens.add({ targets: ghost, alpha: 0, duration: 180, onComplete: () => ghost.destroy() });
+          this._spinNextAfterimage = now + 28;
+          const angleRad = Phaser.Math.DegToRad(prog.angle - direction * 30);
+          const trailR = 44;
+          const wx = this.sprite.x + Math.cos(angleRad) * trailR;
+          const wy = this.sprite.y + Math.sin(angleRad) * trailR;
+          const swordGhost = this.scene.add.image(wx, wy, 'weapon-sword');
+          swordGhost.setDisplaySize(52, 48);
+          swordGhost.setOrigin(0.5, 0.8);
+          swordGhost.setAngle(prog.angle + (direction > 0 ? 80 : -80));
+          swordGhost.setAlpha(0.72);
+          swordGhost.setTint(direction > 0 ? 0xff8833 : 0x33aaff);
+          swordGhost.setDepth(5);
+          this.scene.tweens.add({ targets: swordGhost, alpha: 0, scaleX: 0.7, scaleY: 0.7, duration: 140, onComplete: () => swordGhost.destroy() });
         }
 
-        // 1타: 360도 도달 시
-        if (!hit1Done && Math.abs(prog.angle) >= 360) {
-          hit1Done = true;
-          this.checkSpinHits(hitSet1, radius, damage);
-          this.scene.cameras.main.shake(70, 0.004);
-        }
+        // 1~4타: 144도 간격마다 판정
+        hitThresholds.forEach((threshold, i) => {
+          if (!hitsDone[i] && Math.abs(prog.angle) >= threshold) {
+            hitsDone[i] = true;
+            this.checkSpinHits(hitSets[i], radius, damage);
+            this.scene.cameras.main.shake(45, 0.003);
+            this.spawnSlashFlash(direction, false);
+          }
+        });
       },
       onComplete: () => {
-        // 2타
-        this.checkSpinHits(hitSet2, radius, damage);
-        this.scene.cameras.main.shake(100, 0.005);
+        // 5타 (마지막): 큰 슬래시 플래시
+        this.checkSpinHits(hitSets[4], radius, damage);
+        this.scene.cameras.main.shake(110, 0.006);
+        this.spawnSlashFlash(direction, true);
 
         this.sprite.setAngle(0);
         this.sprite.body.allowGravity = true;
@@ -409,6 +409,28 @@ export default class Player {
         this.spinAttackActive = false;
       }
     });
+  }
+
+  spawnSlashFlash(direction, isFinal = false) {
+    const gfx = this.scene.add.graphics();
+    gfx.setDepth(6);
+    const cx = this.sprite.x;
+    const cy = this.sprite.y;
+    const r = this.spinAttackRadius * (isFinal ? 1.0 : 0.6);
+    const color = direction > 0 ? 0xff9933 : 0x33bbff;
+    const lineW = isFinal ? 3.5 : 2;
+    gfx.lineStyle(lineW, color, isFinal ? 0.9 : 0.65);
+    gfx.beginPath();
+    gfx.arc(cx, cy, r, 0, Math.PI * 2);
+    gfx.strokePath();
+    if (isFinal) {
+      gfx.lineStyle(1.5, 0xffffff, 0.6);
+      gfx.beginPath();
+      gfx.arc(cx, cy, r * 0.65, 0, Math.PI * 2);
+      gfx.strokePath();
+    }
+    const expandScale = isFinal ? 1.4 : 1.25;
+    this.scene.tweens.add({ targets: gfx, alpha: 0, scaleX: expandScale, scaleY: expandScale, duration: isFinal ? 280 : 160, ease: 'Quad.easeOut', onComplete: () => gfx.destroy() });
   }
 
   checkSpinHits(hitEnemies, radius, damage) {

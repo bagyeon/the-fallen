@@ -16,3 +16,12 @@ gh repo create bagyeon/the-fallen --public --source=. --remote=origin --push
 # 빌드 및 gh-pages 배포
 npm run build
 npm run deploy
+
+
+# GitHub Pages 활성화
+GitHub 레포 → Settings → Pages
+Source: Deploy from a branch
+Branch: gh-pages / / (root) 선택 후 Save
+
+# 단축키
+컨트롤+쉬프트+I 대화창 열기

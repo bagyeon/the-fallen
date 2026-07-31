@@ -13,10 +13,14 @@ export default class BootScene extends Phaser.Scene {
   }
 
   preload() {
-    this.load.image('placeholder', '/assets/placeholder.png');
-    this.load.image('game-background', '/resource/img/backgroud_1.png');
-    this.load.image('weapon-sword', '/resource/img/sword.png');
-    this.load.audio('boss-bgm', '/resource/sound/boss1.mp3');
+    const base = import.meta.env.BASE_URL;
+    this.load.image('placeholder', `${base}assets/placeholder.png`);
+    this.load.image('game-background', `${base}resource/img/backgroud_1.png`);
+    this.load.image('stage1-bg', `${base}resource/img/forset.jpg`);
+    this.load.image('stage2-bg', `${base}resource/img/desert.avif`);
+    this.load.image('boss-bg', `${base}resource/img/던전.png`);
+    this.load.image('weapon-sword', `${base}resource/img/sword.png`);
+    this.load.audio('boss-bgm', `${base}resource/sound/boss1.mp3`);
   }
 
   create() {
@@ -32,6 +36,27 @@ export default class BootScene extends Phaser.Scene {
       px(graphics, 34, 10, 12, 4, 0x8f714d);
       px(graphics, 16, 18, 8, 3, 0x6c5339);
       px(graphics, 46, 20, 7, 3, 0x6c5339);
+    });
+
+    this.createPixelTexture('platform-tile', 64, 24, (graphics) => {
+      px(graphics, 0, 0, 64, 24, 0x3d4a5c);
+      px(graphics, 0, 0, 64, 5, 0x5a6e84);
+      px(graphics, 0, 0, 64, 2, 0x7a92a8);
+      px(graphics, 7, 8, 11, 3, 0x2e3844);
+      px(graphics, 36, 10, 13, 3, 0x2e3844);
+      px(graphics, 20, 5, 7, 2, 0x8aa0b4);
+      px(graphics, 48, 6, 9, 2, 0x8aa0b4);
+    });
+
+    this.createPixelTexture('forest-platform-tile', 64, 24, (graphics) => {
+      px(graphics, 0, 0, 64, 24, 0x5c3d1e);
+      px(graphics, 0, 0, 64, 5, 0x7a5428);
+      px(graphics, 0, 0, 64, 2, 0x9c7040);
+      px(graphics, 8, 7, 14, 2, 0x3d2610);
+      px(graphics, 30, 9, 18, 2, 0x3d2610);
+      px(graphics, 52, 6, 10, 2, 0x3d2610);
+      px(graphics, 20, 4, 5, 1, 0xb8884a);
+      px(graphics, 44, 3, 6, 1, 0xb8884a);
     });
 
     this.createPixelTexture('weapon-melee', 24, 24, (graphics) => {
