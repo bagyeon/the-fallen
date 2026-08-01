@@ -5,6 +5,8 @@ export default class EndScene extends Phaser.Scene {
 
   init(data) {
     this.result = data?.result || 'win';
+    // 게임이 끝나면 다음 플레이를 위해 궁극기 게이지를 초기화한다.
+    window.ultimateStacks = 0;
   }
 
   create() {

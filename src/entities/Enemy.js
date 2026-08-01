@@ -14,6 +14,7 @@ export default class Enemy {
     this.detectionRadius = config.detectionRadius || 900;
     this.textureKey = config.textureKey || 'enemy-basic';
     this.defeated = false;
+    this.invincible = false;
     this.nextAttackAt = null;
 
     this.healthBarWidth = this.type === 'boss' ? 84 : 63;
@@ -30,12 +31,12 @@ export default class Enemy {
     this.healthBarBg = scene.add.rectangle(x - this.healthBarWidth / 2, y + this.healthBarOffsetY, this.healthBarWidth, this.healthBarHeight, 0x1f2430, 0.9);
     this.healthBarBg.setOrigin(0, 0.5);
     this.healthBarBg.setDepth(6);
-    if (this.type === 'boss') this.healthBarBg.setVisible(false);
+    if (this.type === 'boss' || this.type === 'boss2') this.healthBarBg.setVisible(false);
 
     this.healthBarFill = scene.add.rectangle(x - this.healthBarWidth / 2, y + this.healthBarOffsetY, this.healthBarWidth, this.healthBarHeight, 0x66d37b, 1);
     this.healthBarFill.setOrigin(0, 0.5);
     this.healthBarFill.setDepth(7);
-    if (this.type === 'boss') this.healthBarFill.setVisible(false);
+    if (this.type === 'boss' || this.type === 'boss2') this.healthBarFill.setVisible(false);
 
     this.rangeIndicator = scene.add.graphics();
     this.rangeIndicator.setDepth(1);
@@ -62,11 +63,23 @@ export default class Enemy {
       this.bossHasRecovered = false; // 체력 회복 한 번만 체크
     }
 
+    if (this.type === 'boss2') {
+      this.sprite.setDisplaySize(120, 150);
+      this.sprite.body.setSize(90, 120);
+      this.sprite.body.setAllowGravity(false);
+    }
+
     this.syncHealthBar();
   }
 
   update(time, delta, player) {
     if (this.defeated || !this.sprite.active) {
+      return;
+    }
+
+    // boss2는 BossScene이 직접 제어
+    if (this.type === 'boss2') {
+      this.syncHealthBar();
       return;
     }
 
@@ -171,6 +184,12 @@ export default class Enemy {
 
   takeDamage(amount) {
     if (this.defeated) {
+      return;
+    }
+
+    if (this.invincible) {
+      this.sprite.setTint(0xffffff);
+      this.scene.time.delayedCall(100, () => { if (this.sprite?.active && !this.defeated) this.resetTint(); });
       return;
     }
 
