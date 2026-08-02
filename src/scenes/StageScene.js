@@ -301,10 +301,15 @@ export default class StageScene extends Phaser.Scene {
       ],
       enemies: [
         { x: 600,  y: 370, health: 2, damage: 2, speed: 78,  attackCooldown: 880, detectionRadius: 880, textureKey: 'enemy-basic', type: 'basic' },
+        { x: 980,  y: 360, health: 2, damage: 2, speed: 80,  attackCooldown: 870, detectionRadius: 900, textureKey: 'enemy-basic', type: 'basic' },
         { x: 1420, y: 330, health: 2, damage: 2, speed: 82,  attackCooldown: 860, detectionRadius: 900, textureKey: 'enemy-basic', type: 'basic' },
+        { x: 1680, y: 300, health: 2, damage: 2, speed: 84,  attackCooldown: 850, detectionRadius: 920, textureKey: 'enemy-basic', type: 'basic' },
         { x: 1960, y: 330, health: 2, damage: 2, speed: 80,  attackCooldown: 870, detectionRadius: 910, textureKey: 'enemy-basic', type: 'basic' },
+        { x: 2350, y: 350, health: 3, damage: 2, speed: 85,  attackCooldown: 845, detectionRadius: 930, textureKey: 'enemy-basic', type: 'basic' },
         { x: 2800, y: 310, health: 3, damage: 2, speed: 86,  attackCooldown: 840, detectionRadius: 940, textureKey: 'enemy-basic', type: 'basic' },
+        { x: 3320, y: 340, health: 3, damage: 2, speed: 88,  attackCooldown: 830, detectionRadius: 950, textureKey: 'enemy-basic', type: 'basic' },
         { x: 3650, y: 270, health: 3, damage: 2, speed: 90,  attackCooldown: 820, detectionRadius: 960, textureKey: 'enemy-basic', type: 'basic' },
+        { x: 4100, y: 320, health: 3, damage: 2, speed: 92,  attackCooldown: 810, detectionRadius: 980, textureKey: 'enemy-basic', type: 'basic' },
       ]
     };
   }

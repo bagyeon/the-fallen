@@ -359,7 +359,7 @@ export default class Player {
 
     const duration = 1800;
     const radius = this.spinAttackRadius * 2; // Q/E의 2배 범위
-    const damage = this.spinAttackDamage * 2;
+    const damage = this.spinAttackDamage * 3;
     const cx = this.sprite.x;
     const cy = this.sprite.y;
     const hitDone = new Set();
