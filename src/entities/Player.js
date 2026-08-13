@@ -30,6 +30,7 @@ export default class Player {
     this.speed = 280;
     this.jumpVelocity = -540;
     this.facing = 1;
+    this.baseAttackDamage = 1;
     this.meleeRange = 112;
     this.attackCooldownUntil = 0;
     this.canAirDash = true;
@@ -44,8 +45,9 @@ export default class Player {
     this.spinAttackRadius = 160;
     this.spinAttackDamage = 1;
 
-    this.ultimateStacks = window.ultimateStacks ?? 0;
-    this.ultimateMaxStacks = 20;
+    this.ultimateMaxStacks = 15;
+    this.ultimateStacks = Math.min(window.ultimateStacks ?? 0, this.ultimateMaxStacks);
+    window.ultimateStacks = this.ultimateStacks;
     this.ultimateActive = false;
 
     this.dashSpeed = 860;
@@ -124,6 +126,17 @@ export default class Player {
     this.ultLabel = scene.add.text(ux + uw / 2, uy + 7, 'R  0 / 30', {
       fontFamily: 'Arial', fontSize: '10px', color: '#ffee88'
     }).setOrigin(0.5, 0.5).setScrollFactor(0).setDepth(1013);
+
+    this.ultimateRegenTimer = scene.time.addEvent({
+      delay: 5000,
+      loop: true,
+      callback: () => {
+        if (this.ultimateStacks < this.ultimateMaxStacks) {
+          this.ultimateStacks = Math.min(this.ultimateMaxStacks, this.ultimateStacks + 1);
+          window.ultimateStacks = this.ultimateStacks;
+        }
+      }
+    });
   }
 
   update(time, delta) {
@@ -253,6 +266,18 @@ export default class Player {
     this.syncCooldownUI(time);
   }
 
+  addUltimateCharge(amount = 1) {
+    if (this.ultimateActive) return;
+
+    const prevStacks = this.ultimateStacks;
+    this.ultimateStacks = Math.min(this.ultimateMaxStacks, this.ultimateStacks + amount);
+    window.ultimateStacks = this.ultimateStacks;
+
+    if (this.ultimateStacks !== prevStacks) {
+      this.syncCooldownUI(this.scene.time.now);
+    }
+  }
+
   syncCooldownUI(time) {
     if (!this.skillSlots) return;
     const cooldowns = [
@@ -313,7 +338,7 @@ export default class Player {
   meleeAttack() {
     const direction = this.facing >= 0 ? 1 : -1;
     const isDashing = this.scene.time.now < this.dashingUntil;
-    const damage = isDashing ? 2 : 1;
+    const damage = isDashing ? this.baseAttackDamage * 2 : this.baseAttackDamage;
     const swingAngle = isDashing ? 90 : 150;
     const attackAngle = direction > 0 ? swingAngle : -swingAngle;
 
@@ -332,11 +357,7 @@ export default class Player {
         if (enemy && !hitEnemies.has(enemy)) {
           hitEnemies.add(enemy);
           enemy.takeDamage(damage);
-          // 일반 공격 적중 시 궁극기 스택 증가
-          if (this.ultimateStacks < this.ultimateMaxStacks) {
-            this.ultimateStacks = Math.min(this.ultimateMaxStacks, this.ultimateStacks + 1);
-            window.ultimateStacks = this.ultimateStacks;
-          }
+          this.addUltimateCharge(1);
         }
       });
     }
@@ -355,21 +376,21 @@ export default class Player {
   startUltimate(time) {
     this.ultimateActive = true;
     this.ultimateStacks = 0;
+    window.ultimateStacks = this.ultimateStacks;
     this.weaponSprite.setVisible(false);
 
-    const duration = 1800;
-    const radius = this.spinAttackRadius * 2; // Q/E의 2배 범위
-    const damage = this.spinAttackDamage * 3;
+    const duration = 3000;
+    const damage = 1;
+    const swordHitRadius = 34;
+    const swordCount = 5;
+    const orbitRadius = 72;
     const cx = this.sprite.x;
     const cy = this.sprite.y;
-    const hitDone = new Set();
 
     // 카메라 연출
     this.scene.cameras.main.shake(duration, 0.004);
     this.sprite.setTint(0xffee00);
 
-    // 칼춤: 8개의 검 잔상이 빠르게 회전
-    const swordCount = 8;
     const swords = [];
     for (let i = 0; i < swordCount; i++) {
       const sw = this.scene.add.image(cx, cy, 'weapon-sword');
@@ -379,7 +400,7 @@ export default class Player {
       swords.push({ img: sw, offset: (i / swordCount) * Math.PI * 2 });
     }
 
-    // 검들이 회전하며 범위 확장
+    // 검 5자루가 플레이어 주변을 고정 궤도로 회전
     const prog = { t: 0 };
     this.scene.tweens.add({
       targets: prog,
@@ -387,16 +408,15 @@ export default class Player {
       duration,
       ease: 'Sine.easeInOut',
       onUpdate: () => {
-        const speed = 2 + prog.t * 4; // 회전 속도 절반
-        const r = 50 + prog.t * 90;   // 반경 점점 커짐
+        const rotation = prog.t * Math.PI * 6;
         swords.forEach((s, i) => {
-          s.offset += speed * 0.04;
-          const ax = this.sprite.x + Math.cos(s.offset) * r;
-          const ay = this.sprite.y + Math.sin(s.offset) * r;
+          const angle = rotation + s.offset;
+          const ax = this.sprite.x + Math.cos(angle) * orbitRadius;
+          const ay = this.sprite.y + Math.sin(angle) * orbitRadius;
           s.img.setPosition(ax, ay);
-          s.img.setAngle(Phaser.Math.RadToDeg(s.offset) + 90);
-          s.img.setTint(prog.t > 0.7 ? 0xffffff : 0xffcc44);
-          s.img.setAlpha(0.7 + Math.sin(s.offset * 3) * 0.3);
+          s.img.setAngle(Phaser.Math.RadToDeg(angle) + 90);
+          s.img.setTint(0xffdd66);
+          s.img.setAlpha(0.78 + Math.sin(angle * 2) * 0.12);
         });
       },
       onComplete: () => {
@@ -404,21 +424,26 @@ export default class Player {
       }
     });
 
-    // 6번 타격 판정 (간격 250ms)
-    for (let wave = 0; wave < 6; wave++) {
-      this.scene.time.delayedCall(wave * 280, () => {
-        if (!this.scene?.enemySprites) return;
-        this.scene.enemySprites.children.iterate((sp) => {
-          if (!sp?.active) return;
-          const enemy = sp.enemyRef;
-          if (!enemy || enemy.defeated || hitDone.has(`${enemy}-${wave}`)) return;
-          const dist = Phaser.Math.Distance.Between(this.sprite.x, this.sprite.y, sp.x, sp.y);
-          if (dist <= radius) {
-            hitDone.add(`${enemy}-${wave}`);
-            enemy.takeDamage(damage);
-          }
-        });
+    const applyUltimateHit = () => {
+      if (!this.scene?.enemySprites) return;
+
+      const damagedEnemies = new Set();
+      this.scene.enemySprites.children.iterate((sp) => {
+        if (!sp?.active) return;
+        const enemy = sp.enemyRef;
+        if (!enemy || enemy.defeated) return;
+
+        const swordHit = swords.some((s) => Phaser.Math.Distance.Between(s.img.x, s.img.y, sp.x, sp.y) <= swordHitRadius);
+        if (!swordHit || damagedEnemies.has(enemy)) return;
+
+        damagedEnemies.add(enemy);
+        enemy.takeDamage(damage, this.scene.time.now);
       });
+    };
+
+    // 0.1초마다 현재 칼 위치 기준으로 타격 판정
+    for (let tick = 0; tick * 100 < duration; tick++) {
+      this.scene.time.delayedCall(tick * 100, applyUltimateHit);
     }
 
     // 종료
@@ -429,9 +454,9 @@ export default class Player {
       // 마지막 대폭발
       const boom = this.scene.add.graphics().setDepth(7);
       boom.lineStyle(5, 0xffffff, 1);
-      boom.strokeCircle(this.sprite.x, this.sprite.y, radius);
+      boom.strokeCircle(this.sprite.x, this.sprite.y, this.spinAttackRadius * 2);
       boom.lineStyle(3, 0xffee44, 0.7);
-      boom.strokeCircle(this.sprite.x, this.sprite.y, radius * 0.6);
+      boom.strokeCircle(this.sprite.x, this.sprite.y, this.spinAttackRadius * 1.2);
       this.scene.tweens.add({ targets: boom, alpha: 0, scaleX: 1.5, scaleY: 1.5, duration: 400, onComplete: () => boom.destroy() });
       this.scene.cameras.main.flash(180, 255, 240, 100, true);
     });
@@ -513,6 +538,7 @@ export default class Player {
       if (distance <= this.groundSmashRadius) {
         hitEnemies.push(enemySprite);
         enemy.takeDamage(this.groundSmashDamage, time);
+        this.addUltimateCharge(1);
 
         if (enemySprite.body) {
           const knockbackDirection = enemySprite.x >= this.sprite.x ? 1 : -1;
@@ -526,9 +552,6 @@ export default class Player {
   startSpinAttack(time, direction) {
     this.spinAttackActive = true;
     this.spinAttackCooldownUntil = time + 4000;
-    // Q/E 사용 시 궁극기 스택 +2
-    this.ultimateStacks = Math.min(this.ultimateMaxStacks, this.ultimateStacks + 2);
-    window.ultimateStacks = this.ultimateStacks;
 
     // 5타 콤보: 720도를 144도 간격으로 나눔, 평타의 1.5배 데미지
     const hitSets = [new Set(), new Set(), new Set(), new Set(), new Set()];
@@ -633,6 +656,7 @@ export default class Player {
 
       hitEnemies.add(enemy);
       enemy.takeDamage(damage);
+      this.addUltimateCharge(1);
 
       if (enemySprite.body) {
         const knockDir = enemySprite.x >= this.sprite.x ? 1 : -1;

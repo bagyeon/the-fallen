@@ -105,7 +105,7 @@ export default class Enemy {
         if (window.difficulty === 'dorai') {
           laserInterval = this.bossPhase === 2 ? 100 : 1000;
         } else {
-          laserInterval = this.bossPhase === 2 ? 900 : 2000;
+          laserInterval = this.bossPhase === 2 ? 1900 : 3000;
         }
         this.bossLaserNextAt = time + laserInterval;
         this.bossLaserAttack(player, time);
@@ -199,7 +199,7 @@ export default class Enemy {
     }
 
     const reduction = (this.type === 'boss' && this.damageReduction) ? this.damageReduction : 0;
-    const actualAmount = Math.max(1, Math.floor(amount * (1 - reduction)));
+    const actualAmount = Math.max(0, amount * (1 - reduction));
     const previousHealth = this.health;
     this.health = Math.max(0, this.health - actualAmount);
     this.sprite.setTint(0xff4d4d);
@@ -475,7 +475,7 @@ export default class Enemy {
       for (let i = 0; i < 4; i++) {
         const angle = baseAngle + (Math.PI / 2) * i;
         const angleDiff = Phaser.Math.Angle.Normalize(playerAngle - angle);
-        if (Math.abs(angleDiff) < 0.3 && distToPlayer > innerRadius && distToPlayer < 2000) {
+        if (Math.abs(angleDiff) < 0.2 && distToPlayer > innerRadius && distToPlayer < 2000) {
           player.takeDamage(2, time);
         }
       }

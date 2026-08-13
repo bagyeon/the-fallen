@@ -9,6 +9,10 @@ export default class BossScene extends Phaser.Scene {
     this.stageIndex = data?.stage ?? 2;
   }
 
+  getStepLabel(step) {
+    return `${this.stageIndex}-${step}`;
+  }
+
   handlePlayerDeath() {
     if (this.ending) {
       return;
@@ -42,7 +46,7 @@ export default class BossScene extends Phaser.Scene {
       return;
     }
 
-    // ─── Stage 1 Boss ───────────────────────────────────────────────────────
+    // ─── 1-2 단계 보스 ─────────────────────────────────────────────────────
     this.worldWidth = 1600;
     const bossHealthMultiplier = 1.8;
 
@@ -71,7 +75,7 @@ export default class BossScene extends Phaser.Scene {
     this.boss = new Enemy(this, this.worldWidth - 420, 500, {
       type: 'boss',
       health: Math.round(20 * bossHealthMultiplier),
-      damage: 2,
+      damage: 1,
       speed: 138,
       attackCooldown: 620,
       detectionRadius: 1600,
@@ -94,7 +98,7 @@ export default class BossScene extends Phaser.Scene {
       }
     });
 
-    this.titleText = this.add.text(24, 18, 'BOSS STAGE', {
+    this.titleText = this.add.text(24, 18, this.getStepLabel(2), {
       fontFamily: 'Arial',
       fontSize: '28px',
       color: '#ffd5a3'
@@ -155,25 +159,6 @@ export default class BossScene extends Phaser.Scene {
     if (this.player?.sprite?.body) {
       this.player.sprite.setVelocity(0, 0);
       this.player.sprite.body.enable = false;
-    }
-
-    // Stage 2 알 보스: Graphics 디졸브
-    if (this.stageIndex === 2) {
-      this.killFloatTween?.();
-      if (this.bossEggGfx) {
-        this.cameras.main.shake(300, 0.015);
-        this.tweens.add({
-          targets: this.bossEggGfx, alpha: 0, scaleX: 3.5, scaleY: 0.15,
-          duration: 900, ease: 'Quad.easeOut',
-          onComplete: () => {
-            this.bossEggGfx?.destroy();
-            this.time.delayedCall(600, () => this.scene.start('End', { result: 'win' }));
-          }
-        });
-      } else {
-        this.time.delayedCall(800, () => this.scene.start('End', { result: 'win' }));
-      }
-      return;
     }
 
     // 기존 보스 스프라이트 디졸브 애니메이션
@@ -266,7 +251,7 @@ export default class BossScene extends Phaser.Scene {
     this.player.update(time, delta);
 
     if (this.stageIndex === 2) {
-      // Stage 2 보스는 BossScene이 직접 제어
+      // 2-2 단계 보스는 BossScene이 직접 제어
       if (this.player.sprite.y > 740 && this.player.isAlive()) {
         this.player.health = 0;
         this.player.defeat();
@@ -289,10 +274,6 @@ export default class BossScene extends Phaser.Scene {
     if (!this.boss.isAlive()) this.handleBossDefeat();
     this.updateHUD();
   }
-
-  // ══════════════════════════════════════════════════════════════
-  //  STAGE 2 BOSS — Floating Egg
-  // ══════════════════════════════════════════════════════════════
 
   createBoss2Arena() {
     this.worldWidth = 1280;
@@ -323,23 +304,22 @@ export default class BossScene extends Phaser.Scene {
     this.player = new Player(this, 200, 500);
     this.floorSegments.forEach(fs => this.physics.add.collider(this.player.sprite, fs.sprite));
 
-    // 보스 (스프라이트=물리 전용, Graphics=비주얼)
+    // 보스 (1-2 단계 보스 스프라이트를 2-2 단계 아레나에서 사용)
     this.boss = new Enemy(this, 640, 180, {
       type: 'boss2',
       health: Math.round(24 * (window.difficulty === 'dorai' ? 2.5 : 1.3)),
       damage: 2, speed: 0, attackCooldown: 99999,
       detectionRadius: 0, attackRange: 0,
-      textureKey: 'enemy-basic'
+      textureKey: 'boss'
     });
     this.boss.sprite.body.allowGravity = false;
-    this.boss.sprite.setVelocity(0, 0);
     this.boss.sprite.setPosition(640, 180);
-    this.boss.sprite.setAlpha(0);
+    this.boss.sprite.setDisplaySize(219, 243);
+    this.boss.sprite.body.setSize(568, 689).setOffset(224, 227);
+    this.boss.sprite.setVelocity(0, 0);
+    this.bossBaseScaleX = this.boss.sprite.scaleX;
+    this.bossBaseScaleY = this.boss.sprite.scaleY;
     this.boss.invincible = true;
-
-    // 알 형태 비주얼 (Graphics 직접 렌더링)
-    this.bossEggGfx = this.drawEggBoss();
-    this.bossEggGfx.setPosition(640, 180);
 
     // 투사체 그룹
     this.projectileGroup = this.physics.add.group();
@@ -376,7 +356,7 @@ export default class BossScene extends Phaser.Scene {
     this.time.delayedCall(3000, () => { if (!this.ending) this.boss2Ready = true; });
 
     // HUD
-    this.titleText = this.add.text(24, 18, 'STAGE 2 BOSS', {
+    this.titleText = this.add.text(24, 18, this.getStepLabel(2), {
       fontFamily: 'Arial', fontSize: '28px', color: '#c080ff'
     }).setScrollFactor(0).setDepth(1000);
 
@@ -389,7 +369,7 @@ export default class BossScene extends Phaser.Scene {
     }).setOrigin(0.5).setScrollFactor(0).setDepth(1001);
 
     const bw = 400, bx = (1280 - bw) / 2, by = 14;
-    this.bossHpLabel = this.add.text(640, by - 2, 'EGG BOSS', {
+    this.bossHpLabel = this.add.text(640, by - 2, 'BOSS', {
       fontFamily: 'Arial', fontSize: '14px', color: '#c080ff'
     }).setOrigin(0.5, 1).setScrollFactor(0).setDepth(1001);
     this.bossHpBarBg = this.add.rectangle(640, by + 11, bw, 22, 0x1a0030)
@@ -407,10 +387,6 @@ export default class BossScene extends Phaser.Scene {
 
   // ── 상태 머신 tick ────────────────────────────────────────────
   updateBoss2(time) {
-    // 알 그래픽 위치를 스프라이트에 동기화
-    if (this.bossEggGfx && this.boss.sprite) {
-      this.bossEggGfx.setPosition(this.boss.sprite.x, this.boss.sprite.y);
-    }
     if (this.boss2State === 'waiting' && this.boss2Ready) {
       this.boss2Ready = false;
       this.startNextBoss2Pattern(time);
@@ -454,13 +430,12 @@ export default class BossScene extends Phaser.Scene {
     this.boss.invincible = false;
     this.boss2State = 'vulnerable';
     this.boss2VulnerableUntil = time + duration;
-    // 알 그래픽 펄스 (Graphics는 setTint 불가, scale 펄스로 대체)
-    if (this.bossEggGfx) {
-      this.tweens.add({
-        targets: this.bossEggGfx, scaleX: 1.77, scaleY: 1.77,
-        duration: 200, yoyo: true, repeat: -1, ease: 'Sine.easeInOut'
-      });
-    }
+    this.tweens.add({
+      targets: this.boss.sprite,
+      scaleX: (this.bossBaseScaleX || this.boss.sprite.scaleX) * 1.05,
+      scaleY: (this.bossBaseScaleY || this.boss.sprite.scaleY) * 1.05,
+      duration: 200, yoyo: true, repeat: -1, ease: 'Sine.easeInOut'
+    });
     if (this.patternText) {
       this.patternText.setText('▼ ATTACK NOW! ▼');
       this.patternText.setColor('#ff4444');
@@ -470,7 +445,9 @@ export default class BossScene extends Phaser.Scene {
   killFloatTween() {
     if (this.floatTween) { this.floatTween.stop(); this.floatTween = null; }
     this.tweens.killTweensOf(this.boss.sprite);
-    if (this.bossEggGfx) { this.tweens.killTweensOf(this.bossEggGfx); this.bossEggGfx.setScale(1.67); }
+    if (this.boss?.sprite) {
+      this.boss.sprite.setScale(this.bossBaseScaleX || this.boss.sprite.scaleX, this.bossBaseScaleY || this.boss.sprite.scaleY);
+    }
   }
 
   // ── 지면 붕괴 헬퍼 ────────────────────────────────────────────
@@ -586,8 +563,7 @@ export default class BossScene extends Phaser.Scene {
         p.setVelocity(Math.cos(angle)*300, Math.sin(angle)*300);
         this.time.delayedCall(2800, () => { if (p.active) p.destroy(); });
       }
-      const rotTarget = this.bossEggGfx ?? this.boss.sprite;
-      this.tweens.add({ targets: rotTarget, angle: rotTarget.angle + 360, duration: 800, ease: 'Quad.easeOut' });
+      this.tweens.add({ targets: this.boss.sprite, angle: this.boss.sprite.angle + 360, duration: 800, ease: 'Quad.easeOut' });
       wavesLeft--;
       if (wavesLeft > 0) this.time.delayedCall(1200, fireWave);
       else this.time.delayedCall(1400, () => { if (!this.ending) this.openVulnerableWindow(3000, this.time.now); });
@@ -615,27 +591,5 @@ export default class BossScene extends Phaser.Scene {
     });
   }
 
-  // 알 보스 픽셀 아트 (0,0 중심)
-  drawEggBoss() {
-    const gfx = this.add.graphics();
-    const p = (x, y, w, h, c) => { gfx.fillStyle(c, 1); gfx.fillRect(x - 36, y - 45, w, h); };
-    p(28, 0, 16, 4, 0x8840e8); p(18, 4, 36, 6, 0x8840e8);
-    p(8, 10, 56, 12, 0x8840e8); p(4, 22, 64, 34, 0x8840e8);
-    p(8, 56, 56, 14, 0x8840e8); p(18, 70, 36, 10, 0x8840e8);
-    p(28, 80, 16, 8, 0x8840e8);
-    p(30, 3, 12, 3, 0x5c28a8); p(20, 6, 32, 5, 0x5c28a8);
-    p(10, 11, 52, 10, 0x5c28a8); p(6, 21, 60, 32, 0x5c28a8);
-    p(10, 53, 52, 12, 0x5c28a8); p(20, 65, 32, 8, 0x5c28a8);
-    p(30, 73, 12, 6, 0x5c28a8);
-    p(12, 12, 48, 8, 0x7038c8); p(8, 20, 56, 28, 0x7038c8);
-    p(12, 48, 48, 10, 0x7038c8);
-    p(22, 26, 28, 22, 0xb080f0);
-    p(26, 29, 20, 16, 0xe860ff);
-    p(30, 31, 12, 12, 0x200040);
-    p(32, 33, 4, 4, 0xffffff);
-    p(35, 50, 2, 12, 0xf0a0ff); p(27, 54, 2, 7, 0xf0a0ff); p(43, 54, 2, 7, 0xf0a0ff);
-    gfx.setScale(1.67).setDepth(50);
-    return gfx;
-  }
 }
 

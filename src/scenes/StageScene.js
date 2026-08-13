@@ -5,10 +5,18 @@ import Enemy from '../entities/Enemy.js';
 export default class StageScene extends Phaser.Scene {
   constructor() { super('Stage'); }
 
-  init(data) { this.stage = data.stage || 1; }
+  init(data) {
+    this.stage = data.stage || 1;
+    this.step = data.step || 1;
+    this.stepLabelBase = data.stepLabelBase || this.stage;
+  }
+
+  getStepLabel(step) {
+    return `${this.stepLabelBase}-${step}`;
+  }
 
   create() {
-    const stageConfig = this.getStageConfig(this.stage);
+    const stageConfig = this.getStageConfig(this.stage, this.step);
     this.worldWidth = stageConfig.worldWidth;
     this.stageComplete = false;
     this.playerDead = false;
@@ -37,14 +45,16 @@ export default class StageScene extends Phaser.Scene {
     // 지면 (피트 구간 지원)
     const groundGroup = this.physics.add.staticGroup();
     const groundTex = stageConfig.groundTexture || 'ground-tile';
-    if (stageConfig.groundSegments) {
-      stageConfig.groundSegments.forEach(seg => {
-        const s = groundGroup.create(seg.x, 684, groundTex);
-        s.setDisplaySize(seg.w, 68).refreshBody();
-      });
-    } else {
-      const s = groundGroup.create(this.worldWidth / 2, 684, groundTex);
-      s.setDisplaySize(this.worldWidth, 68).refreshBody();
+    if (!stageConfig.noGround) {
+      if (stageConfig.groundSegments) {
+        stageConfig.groundSegments.forEach(seg => {
+          const s = groundGroup.create(seg.x, 684, groundTex);
+          s.setDisplaySize(seg.w, 68).refreshBody();
+        });
+      } else {
+        const s = groundGroup.create(this.worldWidth / 2, 684, groundTex);
+        s.setDisplaySize(this.worldWidth, 68).refreshBody();
+      }
     }
     this.ground = groundGroup;
 
@@ -56,6 +66,15 @@ export default class StageScene extends Phaser.Scene {
       stageConfig.platforms.forEach(p => {
         const plat = platformGroup.create(p.x, p.y, platTex);
         plat.setDisplaySize(p.w, 24).refreshBody();
+      });
+    }
+
+    const wallGroup = this.physics.add.staticGroup();
+    this.wallGroup = wallGroup;
+    if (stageConfig.verticalWalls) {
+      stageConfig.verticalWalls.forEach(w => {
+        const wall = wallGroup.create(w.x, w.y, 'lab-wall-tile');
+        wall.setDisplaySize(w.w || 28, w.h || 180).refreshBody();
       });
     }
 
@@ -74,6 +93,7 @@ export default class StageScene extends Phaser.Scene {
     this.player = new Player(this, startX, startY);
     this.physics.add.collider(this.player.sprite, this.ground);
     this.physics.add.collider(this.player.sprite, platformGroup);
+    this.physics.add.collider(this.player.sprite, wallGroup);
     this.physics.add.collider(this.player.sprite, ceilingGroup);
 
     this.enemySprites = this.physics.add.group();
@@ -86,6 +106,7 @@ export default class StageScene extends Phaser.Scene {
       this.enemySprites.add(enemy.sprite);
       this.physics.add.collider(enemy.sprite, this.ground);
       this.physics.add.collider(enemy.sprite, platformGroup);
+      this.physics.add.collider(enemy.sprite, wallGroup);
       return enemy;
     });
 
@@ -105,17 +126,13 @@ export default class StageScene extends Phaser.Scene {
     this.traps = [];
     this.createTraps(stageConfig);
 
-    // Stage 2 출구 문
     if (this.stage === 2) {
-      const door = this.add.image(this.worldWidth - 90, 584, 'door-tile');
-      door.setDisplaySize(80, 120).setDepth(2);
-      this.tweens.add({ targets: door, alpha: 0.65, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-      this.add.text(this.worldWidth - 90, 510, 'BOSS ▶', {
-        fontFamily: 'Arial', fontSize: '16px', color: '#00ff88', fontStyle: 'bold'
+      this.add.text(this.worldWidth - 110, 510, 'EXIT ▶', {
+        fontFamily: 'Arial', fontSize: '18px', color: '#7ef0c0', fontStyle: 'bold'
       }).setOrigin(0.5).setDepth(3);
     }
 
-    this.stageText = this.add.text(24, 18, `STAGE ${this.stage}`, {
+    this.stageText = this.add.text(24, 18, this.getStepLabel(1), {
       fontFamily: 'Arial', fontSize: '28px', color: '#f8e6b0'
     }).setScrollFactor(0).setDepth(1000);
 
@@ -147,17 +164,13 @@ export default class StageScene extends Phaser.Scene {
     this.updateTraps(time);
 
     // 클리어 조건
-    if (this.stage === 2) {
-      if (this.player.sprite.x >= this.worldWidth - 130) {
-        this.handleStageClear();
-        return;
-      }
-    } else {
-      if (this.player.sprite.x >= this.worldWidth - 80) {
-        this.handleStageClear();
-        return;
-      }
-      // 적 전원 사망 = 클리어 (stage 1)
+    if (this.player.sprite.x >= this.worldWidth - 80) {
+      this.handleStageClear();
+      return;
+    }
+
+    if (this.stage !== 2) {
+      // 적 전원 사망 = 클리어 (1-1 단계)
       if (this.enemies.length > 0 && this.enemies.every(e => !e.isAlive())) {
         this.handleStageClear();
       }
@@ -190,6 +203,13 @@ export default class StageScene extends Phaser.Scene {
           if (this.player.isAlive()) { this.player.health = 0; this.player.defeat(); }
         });
         this.traps.push({ type: 'spike', sprite });
+      } else if (t.type === 'laser') {
+        const sprite = this.physics.add.staticImage(t.x, t.y, 'trap-laser');
+        sprite.setDisplaySize(t.w || 128, t.h || 12).setDepth(2).refreshBody();
+        this.physics.add.overlap(this.player.sprite, sprite, () => {
+          if (this.player.isAlive()) { this.player.health = 0; this.player.defeat(); }
+        });
+        this.traps.push({ type: 'laser', sprite });
       }
     });
   }
@@ -209,76 +229,75 @@ export default class StageScene extends Phaser.Scene {
     });
   }
 
-  getStageConfig(stage) {
+  getStageConfig(stage, step = 1) {
     if (stage === 2) {
-      return {
-        skyColor: 0x0d1020,
-        worldWidth: 5800,
-        startX: 140, startY: 200,
-        platformTexture: 'lab-platform-tile',
-        groundTexture: 'lab-ground-tile',
-        requireReachEnd: true,
-        groundSegments: [],  // 바닥 없음 — 발판만으로 이동
-        platforms: [
-          // Zone 1: 고공 시작 → 내리막
-          { x: 200,  y: 220, w: 220 },
-          { x: 490,  y: 300, w: 180 },
-          { x: 750,  y: 380, w: 160 },
-          { x: 1010, y: 450, w: 180 },
-          // Zone 2: 대시 필수 갭 (Shift+대시+점프)
-          { x: 1060, y: 500, w: 180 },  // 오른쪽 끝 x≈1150 (피트 직전)
-          { x: 1570, y: 440, w: 140 },  // 왼쪽 끝 x≈1500 (피트 직후) ← 갭 350px
-          { x: 1800, y: 500, w: 180 },
-          { x: 2020, y: 430, w: 160 },
-          { x: 2200, y: 370, w: 160 },
-          // Zone 3: 천장 함정 — W 공중 대시 사용 시 천장 충돌 후 낙사
-          { x: 2290, y: 480, w: 200 },  // 오른쪽 끝 x≈2390
-          { x: 2640, y: 440, w: 120 },  // 좁은 발판 (피트+천장 구간 내부)
-          { x: 2920, y: 480, w: 200 },  // 피트2b 끝 x≈3020
-          { x: 3200, y: 480, w: 200 },
-          // Zone 4: 이동 톱날 + 피트3
-          { x: 3420, y: 470, w: 180 },
-          { x: 3620, y: 400, w: 160 },  // 오른쪽 끝 x≈3700 (피트3 직전)
-          { x: 3850, y: 330, w: 140 },  // 피트3 위 공중 발판 (x 3780-3920)
-          { x: 4080, y: 400, w: 160 },  // 왼쪽 끝 x≈4000 (피트3 직후) ← 갭 300px
-          { x: 4300, y: 470, w: 180 },
-          { x: 4500, y: 400, w: 160 },
-          { x: 4680, y: 330, w: 140 },
-          // Zone 5: 최종 돌진
-          { x: 4870, y: 470, w: 180 },
-          { x: 5080, y: 400, w: 160 },
-          { x: 5290, y: 330, w: 150 },
-          { x: 5480, y: 400, w: 160 },
-          { x: 5680, y: 470, w: 180 },
-        ],
-        ceilings: [
-          // Zone 3 천장: 이 구간에서 W 공중 대시 사용 시 천장에 막혀 낙사
-          { x: 2640, y: 250, w: 500 },  // 피트2a (x 2310-2600) + 좁은 발판 위
-          { x: 2960, y: 250, w: 400 },  // 피트2b (x 2820-3100) 위
-        ],
-        traps: [
-          { type: 'fire',  x: 750,  y: 348 },
-          { type: 'saw',   x: 2020, y: 398, rangeLeft: 1950, rangeRight: 2090, speed: 85 },
-          { type: 'fire',  x: 2290, y: 448 },
-          { type: 'fire',  x: 3200, y: 448 },
-          { type: 'saw',   x: 3620, y: 368, rangeLeft: 3550, rangeRight: 3690, speed: 95 },
-          { type: 'saw',   x: 4300, y: 438, rangeLeft: 4220, rangeRight: 4380, speed: 105 },
-          { type: 'spike', x: 4680, y: 318, w: 128 },
-          { type: 'fire',  x: 4870, y: 438 },
-          { type: 'fire',  x: 5290, y: 298 },
-          { type: 'saw',   x: 5080, y: 368, rangeLeft: 5010, rangeRight: 5150, speed: 115 },
-          { type: 'spike', x: 5480, y: 388, w: 128 },
-        ],
-        enemies: [
-          { x: 750,  y: 350, health: 4, damage: 2, speed: 92,  attackCooldown: 820, detectionRadius: 980,  textureKey: 'enemy-elite', type: 'elite' },
-          { x: 1800, y: 470, health: 4, damage: 2, speed: 98,  attackCooldown: 780, detectionRadius: 1000, textureKey: 'enemy-elite', type: 'elite' },
-          { x: 3420, y: 440, health: 4, damage: 2, speed: 102, attackCooldown: 760, detectionRadius: 1020, textureKey: 'enemy-elite', type: 'elite' },
-          { x: 5290, y: 300, health: 4, damage: 2, speed: 108, attackCooldown: 740, detectionRadius: 1040, textureKey: 'enemy-elite', type: 'elite' },
-        ]
-      };
+      const labSteps = [
+        {
+          worldWidth: 2500,
+          skyColor: 0x0a1020,
+          startX: 140,
+          startY: 520,
+          groundTexture: 'lab-ground-tile',
+          stepLabelBase: 1,
+          verticalWalls: [
+            { x: 640, y: 510, w: 28, h: 160 },
+            { x: 980, y: 420, w: 28, h: 200 },
+            { x: 1480, y: 370, w: 28, h: 220 },
+            { x: 1880, y: 430, w: 28, h: 180 }
+          ],
+          platforms: [
+            { x: 340, y: 560, w: 180 },
+            { x: 780, y: 500, w: 160 },
+            { x: 1180, y: 440, w: 180 },
+            { x: 1580, y: 390, w: 170 },
+            { x: 2000, y: 470, w: 170 },
+            { x: 2280, y: 420, w: 180 }
+          ],
+          traps: [
+            { type: 'spike', x: 860, y: 676, w: 120 },
+            { type: 'laser', x: 1260, y: 260, w: 180, h: 10 },
+            { type: 'laser', x: 1770, y: 220, w: 170, h: 10 },
+            { type: 'spike', x: 2140, y: 676, w: 150 }
+          ],
+          enemies: [
+            { x: 560, y: 520, health: 2, damage: 1, speed: 76, attackCooldown: 900, detectionRadius: 860, textureKey: 'enemy-basic', type: 'basic' },
+            { x: 1120, y: 520, health: 2, damage: 1, speed: 78, attackCooldown: 880, detectionRadius: 880, textureKey: 'enemy-basic', type: 'basic' },
+            { x: 1700, y: 520, health: 3, damage: 1, speed: 82, attackCooldown: 860, detectionRadius: 900, textureKey: 'enemy-elite', type: 'elite' },
+            { x: 2180, y: 520, health: 3, damage: 1, speed: 84, attackCooldown: 840, detectionRadius: 930, textureKey: 'enemy-basic', type: 'basic' }
+          ]
+        },
+        {
+          worldWidth: 2800,
+          skyColor: 0x0c1326,
+          startX: 140,
+          startY: 520,
+          noGround: true,
+          stepLabelBase: 1,
+          platformTexture: 'lab-platform-tile',
+          platforms: [
+            { x: 180, y: 620, w: 210 },
+            { x: 480, y: 560, w: 160 },
+            { x: 760, y: 500, w: 150 },
+            { x: 1020, y: 440, w: 150 },
+            { x: 1290, y: 380, w: 150 },
+            { x: 1580, y: 320, w: 150 },
+            { x: 1880, y: 260, w: 160 },
+            { x: 2180, y: 200, w: 170 },
+            { x: 2480, y: 150, w: 170 }
+          ],
+          traps: [
+            { type: 'spike', x: 990, y: 700, w: 240 },
+            { type: 'spike', x: 1700, y: 700, w: 260 },
+            { type: 'spike', x: 2400, y: 700, w: 280 }
+          ],
+          enemies: []
+        }
+      ];
+
+      return labSteps[Math.min(step - 1, labSteps.length - 1)];
     }
 
-    // Stage 1: 숲 테마
+    // 1-1 단계: 숲 테마
     return {
       skyColor: 0x0b1a10,
       worldWidth: 4200,
@@ -318,7 +337,7 @@ export default class StageScene extends Phaser.Scene {
     const alive = this.enemies.filter(e => e.isAlive()).length;
     this.statusText.setText([
       `체력: ${this.player.health}/${this.player.maxHealth}`,
-      this.stage === 2 ? `적: ${alive}명 (문까지 도달!)` : `남은 적: ${alive}`
+      this.stage === 2 ? `남은 적: ${alive}명 | 다음 구간으로 돌파` : `남은 적: ${alive}`
     ]);
   }
 
@@ -337,9 +356,17 @@ export default class StageScene extends Phaser.Scene {
     }
     this.time.delayedCall(700, () => {
       if (this.stage === 1) {
-        this.scene.start('Boss', { stage: 1 });  // Stage 1 → 기존 보스
+        this.scene.start('Boss', { stage: 1 });  // 1-2 단계
       } else if (this.stage === 2) {
-        this.scene.start('Boss', { stage: 2 });  // Stage 2 → 알 보스
+        if (this.step < 3) {
+          this.scene.start('Stage', {
+            stage: 2,
+            step: this.step + 1,
+            stepLabelBase: 1
+          });
+        } else {
+          this.scene.start('End', { result: 'win' });
+        }
       } else {
         this.scene.start('Stage', { stage: this.stage + 1 });
       }

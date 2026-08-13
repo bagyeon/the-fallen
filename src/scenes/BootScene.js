@@ -149,6 +149,19 @@ export default class BootScene extends Phaser.Scene {
       g.fillStyle(0x8c9196, 1); g.fillCircle(19, 18, 3);
     });
 
+    this.createPixelTexture('lab-wall-tile', 32, 64, (g) => {
+      g.fillStyle(0x2b2f3a, 1); g.fillRect(0, 0, 32, 64);
+      g.fillStyle(0x4c5468, 1); g.fillRect(0, 0, 32, 4);
+      g.fillStyle(0x7d8697, 1); g.fillRect(0, 0, 32, 2);
+      g.fillStyle(0x1b1d22, 1); g.fillRect(8, 10, 16, 5); g.fillRect(6, 28, 20, 5); g.fillRect(10, 46, 12, 5);
+    });
+
+    this.createPixelTexture('trap-laser', 128, 12, (g) => {
+      g.fillStyle(0x2c2d34, 1); g.fillRect(0, 0, 128, 12);
+      g.fillStyle(0xff4d6d, 1); g.fillRect(4, 2, 120, 8);
+      g.fillStyle(0xffd1dc, 1); g.fillRect(10, 4, 108, 2);
+    });
+
     this.createPixelTexture('trap-spike', 128, 24, (g) => {
       g.fillStyle(0x2a2d35, 1); g.fillRect(0, 10, 128, 14);
       g.fillStyle(0x7c8490, 1);

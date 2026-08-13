@@ -7,8 +7,8 @@ const DIFF_CONFIG = {
   dorai:  { label: 'DORAI',  color: '#ff3366', hpMult: 0.3,  dmgMult: 2.5 },
 };
 
-// 게임 1만 활성화, 나머지는 추후 개발 예정
-const GAME_LIST = [
+// 현재는 1, 2번 스테이지만 활성화, 나머지는 추후 개발 예정
+const STAGE_LIST = [
   { id: 1, name: 'THE FALLEN',  active: true  },
   { id: 2, name: 'LAB ESCAPE',  active: true  },
   { id: 3, name: '???',         active: false },
@@ -41,7 +41,7 @@ export default class Title2Scene extends Phaser.Scene {
       fontFamily: 'Arial', fontSize: '24px', color: diff.color
     }).setOrigin(0.5);
 
-    this.add.text(width / 2, 195, '플레이할 게임을 선택하세요', {
+    this.add.text(width / 2, 195, '플레이할 스테이지를 선택하세요', {
       fontFamily: 'Arial', fontSize: '20px', color: '#aabbcc'
     }).setOrigin(0.5);
 
@@ -53,23 +53,23 @@ export default class Title2Scene extends Phaser.Scene {
     const startX = (width - gridW) / 2 + btnW / 2;
     const startY = 250;
 
-    GAME_LIST.forEach((game, i) => {
+    STAGE_LIST.forEach((stage, i) => {
       const col = i % cols;
       const row = Math.floor(i / cols);
       const cx = startX + col * (btnW + gapX);
       const cy = startY + row * (btnH + gapY);
 
-      if (game.active) {
+      if (stage.active) {
         // 활성 버튼
         const bg = this.add.rectangle(cx, cy, btnW, btnH, 0x1a2e4a, 1)
           .setInteractive({ useHandCursor: true })
           .setStrokeStyle(2, 0x4488cc, 1);
 
-        const numText = this.add.text(cx, cy - 18, `${game.id}`, {
+        const numText = this.add.text(cx, cy - 18, `${stage.id}`, {
           fontFamily: 'Arial', fontSize: '36px', fontStyle: 'bold', color: '#f6d58a'
         }).setOrigin(0.5);
 
-        const nameText = this.add.text(cx, cy + 26, game.name, {
+        const nameText = this.add.text(cx, cy + 26, stage.name, {
           fontFamily: 'Arial', fontSize: '15px', color: '#e8f4ff'
         }).setOrigin(0.5);
 
@@ -85,7 +85,7 @@ export default class Title2Scene extends Phaser.Scene {
         });
         bg.on('pointerdown', () => {
           bg.disableInteractive();
-          this.selectedGame = game.id;
+          this.selectedStage = stage.id;
           this.startVortex();
         });
       } else {
@@ -93,7 +93,7 @@ export default class Title2Scene extends Phaser.Scene {
         this.add.rectangle(cx, cy, btnW, btnH, 0x111825, 1)
           .setStrokeStyle(1, 0x334455, 0.5);
 
-        this.add.text(cx, cy - 18, `${game.id}`, {
+        this.add.text(cx, cy - 18, `${stage.id}`, {
           fontFamily: 'Arial', fontSize: '36px', fontStyle: 'bold', color: '#334455'
         }).setOrigin(0.5);
 
@@ -130,7 +130,7 @@ export default class Title2Scene extends Phaser.Scene {
     this.time.delayedCall(680, () => {
       this.cameras.main.fade(120, 0, 0, 0);
       this.time.delayedCall(120, () => {
-        this.scene.start('Stage', { stage: this.selectedGame === 2 ? 2 : 1 });
+        this.scene.start('Stage', { stage: this.selectedStage ?? 1 });
       });
     });
   }
