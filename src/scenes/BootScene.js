@@ -24,7 +24,12 @@ export default class BootScene extends Phaser.Scene {
     this.load.image('boss', `${base}resource/img/boss.png`);
     this.load.image('boss2', `${base}resource/img/2BOSS.png`);
     this.load.image('boss2-missile-real', `${base}resource/img/REAL MISALIL.png`);
-    this.load.audio('boss-bgm', `${base}resource/sound/stage2-boss.mp3`);
+    this.load.audio('player-basic-attack', `${base}resource/img/pung%20ta.mp3`);
+    this.load.audio('player-dash', `${base}resource/sound/dash.mp3`);
+    this.load.audio('player-ground-smash', `${base}resource/sound/KUNG.mp3`);
+    this.load.audio('player-ultimate', `${base}resource/sound/final%20attack.mp3`);
+    this.load.audio('boss1-bgm', `${base}resource/sound/boss1.mp3`);
+    this.load.audio('boss2-bgm', `${base}resource/sound/stage%202%20boss.mp3`);
   }
 
   create() {

@@ -97,8 +97,9 @@ export default class BossScene extends Phaser.Scene {
     this.bossBattleDelayScale = 1 / this.bossBattleSpeedMultiplier;
     this.bossLaserCountMultiplier = window.difficulty === 'dorai' ? 2 : 1;
 
-    this.bossMusic = this.sound.add('boss-bgm', { loop: true });
-    this.bossMusic.play();
+    const bossTrackKey = this.stageIndex === 2 ? 'boss2-bgm' : 'boss1-bgm';
+    this.bossMusic = this.sound.add(bossTrackKey, { loop: true });
+    this.bossMusic.play({ loop: true });
     this.events.once('shutdown', () => {
       if (this.loseSceneFallbackTimer) {
         window.clearTimeout(this.loseSceneFallbackTimer);

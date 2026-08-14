@@ -15,6 +15,10 @@ export default class Player {
     this.weaponSprite.setDisplaySize(78, 72);
     this.weaponSprite.setAngle(0);
     this.weaponPivotY = 0.82;
+    this.basicAttackSound = scene.sound.add('player-basic-attack');
+    this.dashSound = scene.sound.add('player-dash');
+    this.groundSmashSound = scene.sound.add('player-ground-smash');
+    this.ultimateSound = scene.sound.add('player-ultimate');
 
     this.cursors = scene.input.keyboard.addKeys({
       up: Phaser.Input.Keyboard.KeyCodes.W,
@@ -343,6 +347,10 @@ export default class Player {
     const swingAngle = isDashing ? 90 : 150;
     const attackAngle = direction > 0 ? swingAngle : -swingAngle;
 
+    if (this.basicAttackSound) {
+      this.basicAttackSound.play({ volume: 0.55 });
+    }
+
     this.syncVisuals();
     this.weaponSprite.setFlipX(direction < 0);
     this.weaponSprite.setAngle(attackAngle);
@@ -379,6 +387,10 @@ export default class Player {
     this.ultimateStacks = 0;
     window.ultimateStacks = this.ultimateStacks;
     this.weaponSprite.setVisible(false);
+
+    if (this.ultimateSound) {
+      this.ultimateSound.play({ volume: 0.9 });
+    }
 
     const duration = 3000;
     const damage = 1;
@@ -469,6 +481,9 @@ export default class Player {
     this.nextDashAt = time + this.dashCooldown;
     this.dashDirection = direction;
     this.nextAfterimageAt = time;
+    if (this.dashSound) {
+      this.dashSound.play({ volume: 1.0, seek: 0.3 });
+    }
     this.sprite.setVelocityX(this.dashDirection * this.dashSpeed);
     // 대시 중 하늘색으로 표시
     this.sprite.setTint(0x87ceeb);
@@ -480,6 +495,9 @@ export default class Player {
     this.nextDashAt = time + this.dashCooldown;
     this.dashDirection = 0;
     this.nextAfterimageAt = time;
+    if (this.dashSound) {
+      this.dashSound.play({ volume: 1.0, seek: 0.3 });
+    }
     this.sprite.setVelocityX(0);
     this.sprite.setVelocityY(-this.airDashSpeed);
     this.sprite.setTint(0x87ceeb);
@@ -499,6 +517,10 @@ export default class Player {
     this.sprite.setVelocityY(0);
     if (this.sprite.isTinted) {
       this.sprite.clearTint();
+    }
+
+    if (this.groundSmashSound) {
+      this.groundSmashSound.play({ volume: 0.9 });
     }
 
     this.scene.cameras.main.shake(160, 0.006);
