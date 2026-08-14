@@ -24,7 +24,7 @@ export default class BootScene extends Phaser.Scene {
     this.load.image('boss', `${base}resource/img/boss.png`);
     this.load.image('boss2', `${base}resource/img/2BOSS.png`);
     this.load.image('boss2-missile-real', `${base}resource/img/REAL MISALIL.png`);
-    this.load.audio('boss-bgm', `${base}resource/sound/boss1.mp3`);
+    this.load.audio('boss-bgm', `${base}resource/sound/stage2-boss.mp3`);
   }
 
   create() {

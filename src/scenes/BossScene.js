@@ -97,15 +97,7 @@ export default class BossScene extends Phaser.Scene {
     this.bossBattleDelayScale = 1 / this.bossBattleSpeedMultiplier;
     this.bossLaserCountMultiplier = window.difficulty === 'dorai' ? 2 : 1;
 
-    this.bossMusic = this.sound.add('boss-bgm', { loop: false });
-    this.bossMusic.on('complete', () => {
-      if (!this.bossMusic) return;
-      if (!this.ending && this.boss?.isAlive()) {
-        this.bossMusic.play();
-      } else {
-        this.bossMusic.stop();
-      }
-    });
+    this.bossMusic = this.sound.add('boss-bgm', { loop: true });
     this.bossMusic.play();
     this.events.once('shutdown', () => {
       if (this.loseSceneFallbackTimer) {
@@ -991,7 +983,7 @@ export default class BossScene extends Phaser.Scene {
           alpha: 1,
           width: isPhase2 ? 22 : 18
         });
-        this.applyBoss2LaserHit(beam, isPhase2 ? 44 : 36, 6);
+        this.applyBoss2LaserHit(beam, isPhase2 ? 44 : 36, 3);
 
         if (this.patternText) {
           this.patternText.setText(`패턴2: 발사 ${shotNumber}/${totalShots}`);
