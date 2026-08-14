@@ -5,10 +5,10 @@ import Enemy from '../entities/Enemy.js';
 export default class StageScene extends Phaser.Scene {
   constructor() { super('Stage'); }
 
-  init(data) {
-    this.stage = data.stage || 1;
-    this.step = data.step || 1;
-    this.stepLabelBase = data.stepLabelBase || this.stage;
+  init(data = {}) {
+    this.stage = data.stage ?? 1;
+    this.step = data.step ?? 1;
+    this.stepLabelBase = data.stepLabelBase ?? this.stage;
   }
 
   getStepLabel(step) {
@@ -42,7 +42,12 @@ export default class StageScene extends Phaser.Scene {
     this.cameras.main.setBounds(0, 0, this.worldWidth, 720);
     this.cameras.main.roundPixels = true;
 
-    if (this.stage !== 2) {
+    if (stageConfig.backgroundKey) {
+      const bgTexture = this.textures.get(stageConfig.backgroundKey).getSourceImage();
+      const bgScale = 720 / bgTexture.height;
+      const bg = this.add.tileSprite(this.worldWidth / 2, 360, this.worldWidth, 720, stageConfig.backgroundKey);
+      bg.setTileScale(bgScale, bgScale).setDepth(-1000);
+    } else if (this.stage !== 2) {
       const bgKey = this.stage === 1 ? 'stage1-bg' : 'game-background';
       const bgTexture = this.textures.get(bgKey).getSourceImage();
       const bgScale = 720 / bgTexture.height;
@@ -159,9 +164,21 @@ export default class StageScene extends Phaser.Scene {
       fontFamily: 'Arial', fontSize: '20px', color: '#edf3ff'
     }).setScrollFactor(0).setDepth(1000);
 
-    this.helpText = this.add.text(24, 82, 'WASD 이동 | W 공중대시 | S 강하 | 좌클릭 공격 | Shift+방향 대시', {
-      fontFamily: 'Arial', fontSize: '16px', color: '#b9c9e8'
-    }).setScrollFactor(0).setDepth(1000);
+    const helpMessage = this.stage === 0 
+      ? '좌클릭을 눌러 더미를 10회 공격하시오'
+      : 'WASD 이동 | W 공중대시 | S 강하 | 좌클릭 공격 | Shift+방향 대시';
+
+    if (this.stage === 0) {
+      // 훈련장: 화면 상단 중앙에 큰 텍스트로 표시
+      this.helpText = this.add.text(this.cameras.main.width / 2, 100, helpMessage, {
+        fontFamily: 'Arial', fontSize: '64px', color: '#000000'
+      }).setOrigin(0.5).setScrollFactor(0).setDepth(1000);
+    } else {
+      // 일반 스테이지: 좌측 하단 작은 텍스트
+      this.helpText = this.add.text(24, 82, helpMessage, {
+        fontFamily: 'Arial', fontSize: '16px', color: '#b9c9e8'
+      }).setScrollFactor(0).setDepth(1000);
+    }
 
     this.cameras.main.startFollow(this.player.sprite, true, 0.08, 0.08);
     this.updateHUD();
@@ -206,6 +223,69 @@ export default class StageScene extends Phaser.Scene {
       if (this.enemies.length > 0 && this.enemies.every(e => !e.isAlive())) {
         this.handleStageClear();
       }
+    }
+
+    // 훈련장 메시지 업데이트
+    if (this.stage === 0 && this.helpText) {
+      let trainingMessage = '';
+      
+      // 1단계: 평타 10회
+      if (!this.player.trainingAttackDone) {
+        const remaining = Math.max(0, 10 - this.player.trainingAttackCount);
+        trainingMessage = `좌클릭을 눌러 더미를 ${remaining}회 공격하시오`;
+        if (remaining === 0) {
+          this.player.trainingAttackDone = true;
+        }
+      }
+      // 2단계: 대시 3회
+      else if (!this.player.trainingDashDone) {
+        const remaining = Math.max(0, 3 - this.player.trainingDashCount);
+        trainingMessage = `shift+D, shift+A를 눌러 ${remaining}번 대시하세요`;
+        if (remaining === 0) {
+          this.player.trainingDashDone = true;
+        }
+      }
+      // 3단계: 대시하면서 공격
+      else if (!this.player.trainingDashAttackDone) {
+        trainingMessage = '대시를 하면서 공격하면 대미지가 2배로 들어갑니다';
+        if (this.player.trainingDashAttackCount >= 1) {
+          this.player.trainingDashAttackDone = true;
+        }
+      }
+      // 4단계: 이중 점프
+      else if (!this.player.trainingDoubleJumpDone) {
+        trainingMessage = 'W+W로 이중 점프 하세요';
+        if (this.player.trainingDoubleJumpCount >= 1) {
+          this.player.trainingDoubleJumpDone = true;
+        }
+      }
+      // 5단계: 찍어누르기
+      else if (!this.player.trainingGroundSmashDone) {
+        trainingMessage = '공중에 있는 상태에서 S를 눌러 찍어 누르세요';
+        if (this.player.trainingGroundSmashCount >= 1) {
+          this.player.trainingGroundSmashDone = true;
+        }
+      }
+      // 6단계: 스핀 어택
+      else if (!this.player.trainingSpinAttackDone) {
+        trainingMessage = '공중에서 Q/E를 눌러 돌아 빠르게 대미지를 넣으세요';
+        if (this.player.trainingSpinAttackCount >= 1) {
+          this.player.trainingSpinAttackDone = true;
+        }
+      }
+      // 7단계: 궁극기
+      else if (!this.player.trainingUltimateDone) {
+        trainingMessage = 'R을 눌러 궁극기를 발동하세요!';
+        if (this.player.trainingUltimateCount >= 1) {
+          this.player.trainingUltimateDone = true;
+        }
+      }
+      // 클리어
+      else {
+        trainingMessage = '클리어!';
+      }
+      
+      this.helpText.setText(trainingMessage);
     }
 
     this.updateHUD();
@@ -490,6 +570,39 @@ export default class StageScene extends Phaser.Scene {
   }
 
   getStageConfig(stage, step = 1) {
+    if (stage === 0) {
+      return {
+        skyColor: 0x18231b,
+        worldWidth: 1400,
+        startX: 120,
+        startY: 520,
+        stepLabelBase: 'T',
+        backgroundKey: 'training-bg',
+        groundTexture: 'wood-ground-tile',
+        platformTexture: 'forest-platform-tile',
+        platforms: [],
+        enemies: [
+          {
+            x: 700,
+            y: 610,
+            health: 999999,
+            damage: 0,
+            speed: 0,
+            attackRange: 0,
+            detectionRadius: 0,
+            attackCooldown: 999999,
+            textureKey: 'enemy-basic',
+            type: 'training-dummy',
+            invincible: true,
+            noKnockback: true,
+            fixedPosition: true,
+            hideHealthBar: true,
+            tintColor: 0x8b5a2b
+          }
+        ]
+      };
+    }
+
     if (stage === 2) {
       const step2BasePlatforms = [
         { x: 220,  y: 590, w: 340, motion: 'y', motionBounds: { minY: 560, maxY: 620 }, motionDuration: 2400 },
@@ -838,7 +951,9 @@ export default class StageScene extends Phaser.Scene {
     if (this.nextSceneStarted) return;
     this.nextSceneStarted = true;
 
-    if (this.stage === 1) {
+    if (this.stage === 0) {
+      this.scene.start('Title');
+    } else if (this.stage === 1) {
       this.scene.start('Boss', { stage: 1, step: 2 });  // 1-2 단계
     } else if (this.stage === 2) {
       if (this.step < 3) {

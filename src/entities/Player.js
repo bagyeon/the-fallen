@@ -19,6 +19,7 @@ export default class Player {
     this.dashSound = scene.sound.add('player-dash');
     this.groundSmashSound = scene.sound.add('player-ground-smash');
     this.ultimateSound = scene.sound.add('player-ultimate');
+    this.spinSound = scene.sound.add('player-spin');
 
     this.cursors = scene.input.keyboard.addKeys({
       up: Phaser.Input.Keyboard.KeyCodes.W,
@@ -61,6 +62,22 @@ export default class Player {
     this.dashingUntil = 0;
     this.nextDashAt = 0;
     this.dashDirection = 1;
+
+    // 훈련장 카운터 및 완료 플래그
+    this.trainingAttackCount = 0;
+    this.trainingAttackDone = false;
+    this.trainingDashCount = 0;
+    this.trainingDashDone = false;
+    this.trainingDashAttackCount = 0;
+    this.trainingDashAttackDone = false;
+    this.trainingDoubleJumpCount = 0;
+    this.trainingDoubleJumpDone = false;
+    this.trainingGroundSmashCount = 0;
+    this.trainingGroundSmashDone = false;
+    this.trainingSpinAttackCount = 0;
+    this.trainingSpinAttackDone = false;
+    this.trainingUltimateCount = 0;
+    this.trainingUltimateDone = false;
 
     this.afterimageInterval = 30; // ms
     this.nextAfterimageAt = 0;
@@ -347,8 +364,19 @@ export default class Player {
     const swingAngle = isDashing ? 90 : 150;
     const attackAngle = direction > 0 ? swingAngle : -swingAngle;
 
+    // 훈련장 공격 카운트
+    if (this.scene.stage === 0) {
+      if (this.trainingAttackCount < 10) {
+        this.trainingAttackCount++;
+      }
+      // 대시하면서 공격
+      if (isDashing && this.trainingDashAttackCount < 1) {
+        this.trainingDashAttackCount++;
+      }
+    }
+
     if (this.basicAttackSound) {
-      this.basicAttackSound.play({ volume: 0.55 });
+      this.basicAttackSound.play({ volume: 0.825 });
     }
 
     this.syncVisuals();
@@ -387,6 +415,11 @@ export default class Player {
     this.ultimateStacks = 0;
     window.ultimateStacks = this.ultimateStacks;
     this.weaponSprite.setVisible(false);
+
+    // 훈련장 궁극기 카운트
+    if (this.scene.stage === 0 && this.trainingUltimateCount < 1) {
+      this.trainingUltimateCount++;
+    }
 
     if (this.ultimateSound) {
       this.ultimateSound.play({ volume: 0.9 });
@@ -481,6 +514,12 @@ export default class Player {
     this.nextDashAt = time + this.dashCooldown;
     this.dashDirection = direction;
     this.nextAfterimageAt = time;
+    
+    // 훈련장 대시 카운트
+    if (this.scene.stage === 0 && this.trainingDashCount < 3) {
+      this.trainingDashCount++;
+    }
+    
     if (this.dashSound) {
       this.dashSound.play({ volume: 1.0, seek: 0.3 });
     }
@@ -495,6 +534,12 @@ export default class Player {
     this.nextDashAt = time + this.dashCooldown;
     this.dashDirection = 0;
     this.nextAfterimageAt = time;
+    
+    // 훈련장 이중 점프 카운트
+    if (this.scene.stage === 0 && this.trainingDoubleJumpCount < 1) {
+      this.trainingDoubleJumpCount++;
+    }
+    
     if (this.dashSound) {
       this.dashSound.play({ volume: 1.0, seek: 0.3 });
     }
@@ -507,6 +552,12 @@ export default class Player {
     this.groundSmashActive = true;
     this.groundSmashCooldownUntil = time + 3000;
     this.dashingUntil = 0;
+    
+    // 훈련장 찍어누르기 카운트
+    if (this.scene.stage === 0 && this.trainingGroundSmashCount < 1) {
+      this.trainingGroundSmashCount++;
+    }
+    
     this.sprite.setVelocityX(0);
     this.sprite.setVelocityY(this.groundSmashSpeed);
     this.sprite.setTint(0xffc977);
@@ -564,7 +615,7 @@ export default class Player {
         enemy.takeDamage(this.groundSmashDamage, time);
         this.addUltimateCharge(1);
 
-        if (enemySprite.body) {
+        if (enemySprite.body && !enemy.noKnockback) {
           const knockbackDirection = enemySprite.x >= this.sprite.x ? 1 : -1;
           enemySprite.body.setVelocityX(knockbackDirection * 320);
           enemySprite.body.setVelocityY(-180);
@@ -576,6 +627,11 @@ export default class Player {
   startSpinAttack(time, direction) {
     this.spinAttackActive = true;
     this.spinAttackCooldownUntil = time + 4000;
+
+    // 훈련장 스핀 어택 카운트
+    if (this.scene.stage === 0 && this.trainingSpinAttackCount < 1) {
+      this.trainingSpinAttackCount++;
+    }
 
     // 5타 콤보: 720도를 144도 간격으로 나눔, 평타의 1.5배 데미지
     const hitSets = [new Set(), new Set(), new Set(), new Set(), new Set()];
@@ -589,6 +645,11 @@ export default class Player {
     this.sprite.body.allowGravity = false;
     this.weaponSprite.setVisible(false);
     this.sprite.setTint(direction > 0 ? 0xff9944 : 0x44aaff);
+
+    // 스킬 시작 시 한 번 재생
+    if (this.spinSound) {
+      this.spinSound.play({ volume: 2.1 });
+    }
 
     const prog = { angle: 0 };
     const totalAngle = direction * 720;
@@ -667,6 +728,7 @@ export default class Player {
   checkSpinHits(hitEnemies, radius, damage) {
     if (!this.scene.enemySprites) return;
 
+    let hasHit = false;
     this.scene.enemySprites.children.iterate((enemySprite) => {
       if (!enemySprite || !enemySprite.active) return;
       const enemy = enemySprite.enemyRef;
@@ -681,13 +743,19 @@ export default class Player {
       hitEnemies.add(enemy);
       enemy.takeDamage(damage);
       this.addUltimateCharge(1);
+      hasHit = true;
 
-      if (enemySprite.body) {
+      if (enemySprite.body && !enemy.noKnockback) {
         const knockDir = enemySprite.x >= this.sprite.x ? 1 : -1;
         enemySprite.body.setVelocityX(knockDir * 320);
         enemySprite.body.setVelocityY(-160);
       }
     });
+
+    // 타격할 때마다 SPIN.mp3 추가 재생
+    if (hasHit && this.spinSound) {
+      this.spinSound.play({ volume: 1.5 });
+    }
   }
 
   spawnAfterimage() {

@@ -4,18 +4,21 @@ export default class Enemy {
   constructor(scene, x, y, config = {}) {
     this.scene = scene;
     this.type = config.type || 'basic';
-    this.maxHealth = config.health || 2;
+    this.maxHealth = config.health ?? 2;
     this.health = this.maxHealth;
-    this.damage = config.damage || 1;
-    this.speed = config.speed || 80;
-    this.attackRange = config.attackRange || 72;
-    this.attackCooldown = config.attackCooldown || 2000;
-    this.attackWarningTime = config.attackWarningTime || 1000;
-    this.detectionRadius = config.detectionRadius || 900;
+    this.damage = config.damage ?? 1;
+    this.speed = config.speed ?? 80;
+    this.attackRange = config.attackRange ?? 72;
+    this.attackCooldown = config.attackCooldown ?? 2000;
+    this.attackWarningTime = config.attackWarningTime ?? 1000;
+    this.detectionRadius = config.detectionRadius ?? 900;
     this.textureKey = config.textureKey || 'enemy-basic';
     this.defeated = false;
-    this.invincible = false;
+    this.invincible = !!config.invincible;
+    this.noKnockback = !!config.noKnockback;
+    this.fixedPosition = !!config.fixedPosition;
     this.nextAttackAt = null;
+    this.baseTint = (config.tintColor !== undefined && config.tintColor !== null) ? config.tintColor : null;
 
     this.healthBarWidth = this.type === 'boss' ? 84 : 63;
     this.healthBarHeight = 6;
@@ -28,6 +31,17 @@ export default class Enemy {
     this.sprite.body.setSize(30, 40).setOffset(9, 14);
     this.sprite.enemyRef = this;
 
+    if (this.baseTint !== null) {
+      this.sprite.setTint(this.baseTint);
+    }
+
+    if (this.fixedPosition && this.sprite.body) {
+      this.sprite.body.setAllowGravity(false);
+      this.sprite.body.setImmovable(true);
+      this.sprite.body.moves = false;
+      this.sprite.setVelocity(0, 0);
+    }
+
     this.healthBarBg = scene.add.rectangle(x - this.healthBarWidth / 2, y + this.healthBarOffsetY, this.healthBarWidth, this.healthBarHeight, 0x1f2430, 0.9);
     this.healthBarBg.setOrigin(0, 0.5);
     this.healthBarBg.setDepth(6);
@@ -37,6 +51,11 @@ export default class Enemy {
     this.healthBarFill.setOrigin(0, 0.5);
     this.healthBarFill.setDepth(7);
     if (this.type === 'boss' || this.type === 'boss2') this.healthBarFill.setVisible(false);
+
+    if (config.hideHealthBar) {
+      this.healthBarBg.setVisible(false);
+      this.healthBarFill.setVisible(false);
+    }
 
     this.rangeIndicator = scene.add.graphics();
     this.rangeIndicator.setDepth(1);
@@ -74,6 +93,12 @@ export default class Enemy {
 
   update(time, delta, player) {
     if (this.defeated || !this.sprite.active) {
+      return;
+    }
+
+    if (this.fixedPosition) {
+      this.sprite.setVelocity(0, 0);
+      this.syncHealthBar();
       return;
     }
 
@@ -142,6 +167,9 @@ export default class Enemy {
   }
 
   tryAttack(player, time) {
+    if (this.fixedPosition) {
+      return;
+    }
     this.updateAttackCycle(player, time);
   }
 
@@ -189,6 +217,31 @@ export default class Enemy {
 
     if (this.invincible) {
       this.sprite.setTint(0xffffff);
+      this.scene.cameras.main.shake(35, 0.0018);
+
+      const hitFx = this.scene.add.circle(this.sprite.x, this.sprite.y - 8, 18, 0xffe0b0, 0.45);
+      hitFx.setDepth(8);
+      this.scene.tweens.add({
+        targets: hitFx,
+        alpha: 0,
+        radius: 34,
+        duration: 140,
+        ease: 'Quad.easeOut',
+        onUpdate: () => {
+          if (hitFx?.active) hitFx.setRadius(hitFx.radius);
+        },
+        onComplete: () => hitFx.destroy()
+      });
+
+      this.scene.tweens.add({
+        targets: this.sprite,
+        scaleX: this.sprite.scaleX * 1.06,
+        scaleY: this.sprite.scaleY * 1.06,
+        duration: 70,
+        yoyo: true,
+        ease: 'Sine.easeOut'
+      });
+
       this.scene.time.delayedCall(100, () => { if (this.sprite?.active && !this.defeated) this.resetTint(); });
       return;
     }
@@ -530,6 +583,8 @@ export default class Enemy {
     if (!this.sprite?.active) return;
     if (this.type === 'boss' && this.bossPhase === 2) {
       this.sprite.setTint(0xff6600);
+    } else if (this.baseTint !== null) {
+      this.sprite.setTint(this.baseTint);
     } else {
       this.sprite.clearTint();
     }

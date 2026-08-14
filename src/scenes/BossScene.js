@@ -443,6 +443,8 @@ export default class BossScene extends Phaser.Scene {
     // 보스2 패턴 상태
     this.boss2State = 'idle';
     this.boss2PatternStarted = false;
+    this.boss2ActionLoopScheduled = false;
+    this.boss2ActionRunning = false;
     this.boss2ActionIndex = 0;
     this.boss2ActionCount = 4;
     this.boss2Phase = 1;
@@ -561,15 +563,21 @@ export default class BossScene extends Phaser.Scene {
   }
 
   startBoss2PatternLoop() {
-    if (this.boss2PatternStarted || this.ending || this.boss2PhaseTransitioning) return;
+    if (this.ending || this.boss2PhaseTransitioning || this.boss2ActionRunning || this.boss2PatternStarted || this.boss2ActionLoopScheduled) return;
     this.boss2PatternStarted = true;
+    this.boss2ActionLoopScheduled = true;
     const startDelay = this.boss2Phase === 2 ? 700 : 1300;
-    this.queueBoss2Timer(startDelay, () => this.runNextBoss2Action());
+    this.queueBoss2Timer(startDelay, () => {
+      this.boss2ActionLoopScheduled = false;
+      this.runNextBoss2Action();
+    });
   }
 
   runNextBoss2Action() {
-    if (this.ending) return;
-    if (this.boss2PhaseTransitioning) return;
+    if (this.ending || this.boss2PhaseTransitioning || this.boss2ActionRunning) return;
+    this.boss2ActionRunning = true;
+    this.boss2PatternStarted = true;
+    this.boss2ActionLoopScheduled = false;
 
     const action = this.boss2ActionIndex % this.boss2ActionCount;
     this.boss2ActionIndex += 1;
@@ -624,8 +632,11 @@ export default class BossScene extends Phaser.Scene {
   finishBoss2Action(actionToken, action) {
     if (this.isBoss2ActionStale(actionToken)) return;
     if (this.boss2PhaseTransitioning) return;
+    this.boss2ActionRunning = false;
     this.boss2State = 'idle';
-    
+    this.boss2PatternStarted = false;
+    this.boss2ActionLoopScheduled = true;
+
     // 다음 패턴 시작 전까지 보스를 무적 상태로 설정
     if (this.boss) {
       this.boss.invincible = true;
@@ -635,7 +646,11 @@ export default class BossScene extends Phaser.Scene {
       this.patternText.setText('다음 패턴');
       this.patternText.setColor('#99ddff');
     }
-    this.queueBoss2Timer(900, () => this.runNextBoss2Action());
+    this.queueBoss2Timer(900, () => {
+      if (this.ending || this.boss2PhaseTransitioning) return;
+      this.boss2ActionLoopScheduled = false;
+      this.runNextBoss2Action();
+    });
   }
 
   isBoss2HalfHpBuffActive() {
@@ -660,6 +675,7 @@ export default class BossScene extends Phaser.Scene {
 
     this.boss2Phase2Triggered = true;
     this.boss2PhaseTransitioning = true;
+    this.boss2ActionRunning = false;
     this.boss2PatternStarted = false;
     this.boss2State = 'phase2-transition';
     this.boss2ActionToken += 1;
@@ -1525,7 +1541,7 @@ export default class BossScene extends Phaser.Scene {
   updateBoss2(time) {
     if (this.ending || !this.boss?.sprite?.active) return;
     this.maybeTriggerBoss2Phase2();
-    if (!this.boss2PatternStarted) {
+    if (!this.boss2PatternStarted && !this.boss2ActionLoopScheduled && !this.boss2ActionRunning) {
       this.startBoss2PatternLoop();
     }
 

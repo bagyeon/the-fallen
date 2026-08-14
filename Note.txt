@@ -13,6 +13,12 @@ git commit -m "Initial scaffold"
 # 권장: GitHub CLI로 리포지토리 생성 및 푸시 (gh 인증 필요)
 gh repo create bagyeon/the-fallen --public --source=. --remote=origin --push
 
+
+# git upload
+git add -A
+git commit -m 'update'
+git push
+
 # 빌드 및 gh-pages 배포
 npm run build
 npm run deploy
@@ -22,6 +28,7 @@ npm run deploy
 GitHub 레포 → Settings → Pages
 Source: Deploy from a branch
 Branch: gh-pages / / (root) 선택 후 Save
+https://bagyeon.github.io/the-fallen/
 
 # 단축키
 컨트롤+쉬프트+I 대화창 열기

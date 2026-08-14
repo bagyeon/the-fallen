@@ -17,6 +17,7 @@ export default class BootScene extends Phaser.Scene {
     this.load.image('placeholder', `${base}assets/placeholder.png`);
     this.load.image('game-background', `${base}resource/img/backgroud_1.png`);
     this.load.image('stage1-bg', `${base}resource/img/forset.jpg`);
+    this.load.image('training-bg', `${base}resource/img/test.png`);
     this.load.image('stage2-bg', `${base}resource/img/desert.avif`);
     this.load.image('boss-bg', `${base}resource/img/던전.png`);
     this.load.image('weapon-sword', `${base}resource/img/sword.png`);
@@ -28,6 +29,7 @@ export default class BootScene extends Phaser.Scene {
     this.load.audio('player-dash', `${base}resource/sound/dash.mp3`);
     this.load.audio('player-ground-smash', `${base}resource/sound/KUNG.mp3`);
     this.load.audio('player-ultimate', `${base}resource/sound/final%20attack.mp3`);
+    this.load.audio('player-spin', `${base}resource/sound/SPIN.mp3`);
     this.load.audio('boss1-bgm', `${base}resource/sound/boss1.mp3`);
     this.load.audio('boss2-bgm', `${base}resource/sound/stage%202%20boss.mp3`);
   }
@@ -66,6 +68,17 @@ export default class BootScene extends Phaser.Scene {
       px(graphics, 52, 6, 10, 2, 0x3d2610);
       px(graphics, 20, 4, 5, 1, 0xb8884a);
       px(graphics, 44, 3, 6, 1, 0xb8884a);
+    });
+
+    this.createPixelTexture('wood-ground-tile', 64, 32, (graphics) => {
+      px(graphics, 0, 0, 64, 32, 0x6f4a2b);
+      px(graphics, 0, 0, 64, 4, 0x956238);
+      px(graphics, 0, 4, 64, 2, 0xb07a49);
+      px(graphics, 6, 9, 20, 2, 0x5a3a21);
+      px(graphics, 30, 13, 22, 2, 0x5a3a21);
+      px(graphics, 10, 19, 18, 2, 0x5a3a21);
+      px(graphics, 36, 23, 16, 2, 0x5a3a21);
+      px(graphics, 4, 28, 56, 3, 0x4a2f1b);
     });
 
     this.createPixelTexture('weapon-melee', 24, 24, (graphics) => {

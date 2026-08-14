@@ -41,21 +41,34 @@ export default class TitleScene extends Phaser.Scene {
     dbgBtn.on('pointerdown', () => { window.debugMode = !window.debugMode; updateDbg(); });
     updateDbg();
 
-    // 조작법
-    this.add.text(width / 2, 148, '— 조 작 방 법 —', {
+    // 훈련장 버튼
+    this.add.text(width / 2, 148, '— 훈 련 장 —', {
       fontFamily: 'Arial', fontSize: '20px', color: '#7799bb'
     }).setOrigin(0.5);
 
-    this.add.text(width / 2, 270, [
-      'A / D              좌우 이동',
-      'W                  점프  (공중 1회 상승 대시)',
-      'Shift + A / D      지상 돌진 대시',
-      'S                  공중 급강하 강타',
-      'E / Q              공중 720° 회전 공격',
-      '좌클릭             근접 공격',
-    ], {
-      fontFamily: 'Arial', fontSize: '19px', color: '#cde0ff', lineSpacing: 10, align: 'left'
+    const trainingBtnBox = this.add.rectangle(width / 2, 270, 360, 90, 0x12243a, 1)
+      .setStrokeStyle(2, 0x4b6d90, 0.95)
+      .setInteractive({ useHandCursor: true });
+
+    const trainingBtnLabel = this.add.text(width / 2, 258, '훈련장', {
+      fontFamily: 'Arial', fontSize: '34px', fontStyle: 'bold', color: '#e8f3ff'
     }).setOrigin(0.5);
+
+    const trainingBtnSub = this.add.text(width / 2, 286, '기본 동작 연습하기', {
+      fontFamily: 'Arial', fontSize: '14px', color: '#9ec2e6'
+    }).setOrigin(0.5);
+
+    trainingBtnBox.on('pointerover', () => {
+      trainingBtnBox.setFillStyle(0x1a3554, 1);
+      trainingBtnBox.setStrokeStyle(2.5, 0x79b2ee, 1);
+      trainingBtnLabel.setColor('#ffffff');
+    });
+    trainingBtnBox.on('pointerout', () => {
+      trainingBtnBox.setFillStyle(0x12243a, 1);
+      trainingBtnBox.setStrokeStyle(2, 0x4b6d90, 0.95);
+      trainingBtnLabel.setColor('#e8f3ff');
+    });
+    trainingBtnBox.on('pointerdown', () => this.scene.start('Stage', { stage: 0, step: 1, stepLabelBase: 'T' }));
 
     // 난이도 선택
     this.add.text(width / 2, 430, '— 난 이 도 선 택 —', {
