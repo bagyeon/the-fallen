@@ -22,6 +22,8 @@ export default class BootScene extends Phaser.Scene {
     this.load.image('weapon-sword', `${base}resource/img/sword.png`);
     this.load.image('player-melee', `${base}resource/img/siba.png`);
     this.load.image('boss', `${base}resource/img/boss.png`);
+    this.load.image('boss2', `${base}resource/img/2BOSS.png`);
+    this.load.image('boss2-missile-real', `${base}resource/img/REAL MISALIL.png`);
     this.load.audio('boss-bgm', `${base}resource/sound/boss1.mp3`);
   }
 
@@ -227,6 +229,21 @@ export default class BootScene extends Phaser.Scene {
       g.fillStyle(0x2050c0, 1); g.fillCircle(6, 6, 5);
       g.fillStyle(0x4090ff, 1); g.fillCircle(6, 6, 3);
       g.fillStyle(0xa0d0ff, 1); g.fillCircle(5, 5, 2);
+    });
+
+    this.createPixelTexture('boss2-spear', 56, 16, (g) => {
+      // 오른쪽을 향하는 창: 앞쪽(오른쪽) 은빛 창날 + 뒤쪽(왼쪽) 나무 자루
+      g.fillStyle(0x7a5632, 1); g.fillRect(2, 7, 40, 2);
+      g.fillStyle(0x8d6740, 1); g.fillRect(2, 6, 38, 1);
+      g.fillStyle(0x5f452a, 1); g.fillRect(2, 9, 36, 1);
+
+      g.fillStyle(0xd8e2f0, 1); g.fillRect(40, 6, 8, 4);
+      g.fillStyle(0xb8c7dc, 1); g.fillRect(42, 5, 6, 1);
+      g.fillStyle(0xb8c7dc, 1); g.fillRect(42, 10, 6, 1);
+      g.fillStyle(0xeef4ff, 1); g.fillTriangle(48, 4, 55, 8, 48, 12);
+
+      g.fillStyle(0xc7d4e6, 1); g.fillRect(39, 7, 2, 2);
+      g.fillStyle(0xc7d4e6, 1); g.fillRect(34, 6, 2, 4);
     });
 
     this.scene.start('Title');

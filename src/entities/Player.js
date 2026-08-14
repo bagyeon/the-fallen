@@ -65,6 +65,7 @@ export default class Player {
     this.maxHealth = Math.max(1, Math.round(10 * hpMult));
     this.health = this.maxHealth;
     this.invulnerableUntil = 0;
+    this.defeated = false;
 
     // hard/dorai: 자연회복 없음
     const regenDisabled = window.difficulty === 'hard' || window.difficulty === 'dorai';
@@ -441,9 +442,10 @@ export default class Player {
       });
     };
 
-    // 0.1초마다 현재 칼 위치 기준으로 타격 판정
-    for (let tick = 0; tick * 100 < duration; tick++) {
-      this.scene.time.delayedCall(tick * 100, applyUltimateHit);
+    const ultimateHitInterval = 80;
+    // 0.08초마다 현재 칼 위치 기준으로 타격 판정
+    for (let tick = 0; tick * ultimateHitInterval < duration; tick++) {
+      this.scene.time.delayedCall(tick * ultimateHitInterval, applyUltimateHit);
     }
 
     // 종료
@@ -691,6 +693,7 @@ export default class Player {
 
   takeDamage(amount, time = 0) {
     if (window.debugMode) return;
+    if (this.defeated || !this.isAlive()) return;
     if (time < this.invulnerableUntil) {
       return;
     }
@@ -701,17 +704,21 @@ export default class Player {
     const previousHealth = this.health;
     this.health = Math.max(0, this.health - actualAmount);
     this.sprite.setTint(0xff7a7a);
-    this.healthBarFill.setFillStyle(this.health <= 2 ? 0xff6b6b : 0x6ee07b, 1);
+    if (this.healthBarFill && this.healthBarFill.active) {
+      this.healthBarFill.setFillStyle(this.health <= 2 ? 0xff6b6b : 0x6ee07b, 1);
+    }
     
     // 체력바 흔들림 효과
-    const originalBarX = this.healthBarFill.x;
-    this.scene.tweens.add({
-      targets: this.healthBarFill,
-      x: originalBarX + 4,
-      duration: 50,
-      yoyo: true,
-      repeat: 3
-    });
+    if (this.healthBarFill && this.healthBarFill.active) {
+      const originalBarX = this.healthBarFill.x;
+      this.scene.tweens.add({
+        targets: this.healthBarFill,
+        x: originalBarX + 4,
+        duration: 50,
+        yoyo: true,
+        repeat: 3
+      });
+    }
     
     // 체력바 천천히 줄어드는 효과
     if (this.healthBarFill && this.maxHealth > 0) {
@@ -743,6 +750,8 @@ export default class Player {
   }
 
   defeat() {
+    if (this.defeated) return;
+    this.defeated = true;
     this.sprite.setVelocity(0, 0);
     this.weaponSprite.setVisible(false);
     if (this.regenTimer) {
@@ -761,7 +770,7 @@ export default class Player {
   }
 
   isAlive() {
-    return this.health > 0;
+    return this.health > 0 && !this.defeated;
   }
 
   getStatusText() {

@@ -1,0 +1,29 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "save-progress-commit",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"add",
+				".",
+				"&&",
+				"git",
+				"commit",
+				"-m",
+				"\"Save progress: stage 2-2 platform/trap/burn updates\""
+			]
+		},
+		{
+			"label": "save-progress-commit-cmd",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/d",
+				"/c",
+				"git add . && git commit -m \"Save progress: stage 2-2 updates\""
+			]
+		}
+	]
+}

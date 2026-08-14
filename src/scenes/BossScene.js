@@ -7,6 +7,7 @@ export default class BossScene extends Phaser.Scene {
 
   init(data) {
     this.stageIndex = data?.stage ?? 2;
+    this.stepIndex = data?.step ?? 2;
   }
 
   getStepLabel(step) {
@@ -19,13 +20,82 @@ export default class BossScene extends Phaser.Scene {
     }
 
     this.ending = true;
-    this.time.delayedCall(500, () => {
-      this.scene.start('End', { result: 'lose' });
+    this.endingResult = 'lose';
+    this.deathTransitionAt = this.time.now;
+    if (this.player?.sprite?.body) {
+      this.player.sprite.setVelocity(0, 0);
+      this.player.sprite.body.enable = false;
+    }
+    this.input.enabled = false;
+    // 전환을 최우선으로 실행하고, 패턴 정리는 다음 틱에 안전하게 처리한다.
+    this.startLoseScene();
+
+    this.time.delayedCall(0, () => {
+      if (!this.sys?.isActive()) return;
+      try {
+        this.shutdownBoss2PatternSystems();
+      } catch (_) {
+        // 사망 전환을 막지 않기 위해 정리 예외는 무시한다.
+      }
     });
+
+    this.time.delayedCall(50, () => {
+      this.startLoseScene();
+    });
+
+    // Scene 타이머/업데이트가 멈춰도 작동하는 최종 폴백
+    if (this.loseSceneFallbackTimer) {
+      window.clearTimeout(this.loseSceneFallbackTimer);
+      this.loseSceneFallbackTimer = null;
+    }
+    this.loseSceneFallbackTimer = window.setTimeout(() => {
+      if (this.loseSceneStarted) return;
+      this.forceStartLoseScene();
+    }, 300);
+  }
+
+  startLoseScene() {
+    if (this.loseSceneStarted) return;
+    try {
+      this.scene.start('End', { result: 'lose' });
+      this.loseSceneStarted = true;
+      if (this.loseSceneFallbackTimer) {
+        window.clearTimeout(this.loseSceneFallbackTimer);
+        this.loseSceneFallbackTimer = null;
+      }
+    } catch (_) {
+      this.loseSceneStarted = false;
+    }
+  }
+
+  forceStartLoseScene() {
+    if (this.loseSceneStarted) return;
+    try {
+      this.scene.start('End', { result: 'lose' });
+      this.loseSceneStarted = true;
+    } catch (_) {
+      try {
+        const mgr = this.scene?.manager;
+        if (mgr) {
+          mgr.stop('Boss');
+          mgr.start('End', { result: 'lose' });
+          this.loseSceneStarted = true;
+        }
+      } catch (_) {
+        this.loseSceneStarted = false;
+      }
+    }
   }
 
   create() {
     this.ending = false;
+    this.endingResult = null;
+    this.loseSceneStarted = false;
+    this.deathTransitionAt = 0;
+    this.loseSceneFallbackTimer = null;
+    this.bossBattleSpeedMultiplier = window.difficulty === 'dorai' ? 2 : 1;
+    this.bossBattleDelayScale = 1 / this.bossBattleSpeedMultiplier;
+    this.bossLaserCountMultiplier = window.difficulty === 'dorai' ? 2 : 1;
 
     this.bossMusic = this.sound.add('boss-bgm', { loop: false });
     this.bossMusic.on('complete', () => {
@@ -38,10 +108,14 @@ export default class BossScene extends Phaser.Scene {
     });
     this.bossMusic.play();
     this.events.once('shutdown', () => {
+      if (this.loseSceneFallbackTimer) {
+        window.clearTimeout(this.loseSceneFallbackTimer);
+        this.loseSceneFallbackTimer = null;
+      }
       if (this.bossMusic) { this.bossMusic.stop(); this.bossMusic.destroy(); this.bossMusic = null; }
     });
 
-    if (this.stageIndex === 2) {
+    if (this.stageIndex === 2 && this.stepIndex === 3) {
       this.createBoss2Arena();
       return;
     }
@@ -76,8 +150,8 @@ export default class BossScene extends Phaser.Scene {
       type: 'boss',
       health: Math.round(20 * bossHealthMultiplier),
       damage: 1,
-      speed: 138,
-      attackCooldown: 620,
+      speed: Math.round(138 * this.bossBattleSpeedMultiplier),
+      attackCooldown: Math.max(120, Math.round(620 * this.bossBattleDelayScale)),
       detectionRadius: 1600,
       attackRange: 60,
       textureKey: 'boss'
@@ -98,7 +172,7 @@ export default class BossScene extends Phaser.Scene {
       }
     });
 
-    this.titleText = this.add.text(24, 18, this.getStepLabel(2), {
+    this.titleText = this.add.text(24, 18, this.getStepLabel(this.stepIndex), {
       fontFamily: 'Arial',
       fontSize: '28px',
       color: '#ffd5a3'
@@ -115,6 +189,8 @@ export default class BossScene extends Phaser.Scene {
     const bossBarHeight = 22;
     const bossBarX = (this.scale.width - bossBarWidth) / 2;
     const bossBarY = 14;
+    this.bossHpBarWidth = bossBarWidth;
+    this.bossHpBarHeight = bossBarHeight;
 
     this.bossHpLabel = this.add.text(this.scale.width / 2, bossBarY - 2, 'BOSS', {
       fontFamily: 'Arial',
@@ -144,9 +220,15 @@ export default class BossScene extends Phaser.Scene {
 
   updateHUD() {
     if (!this.statusText) return;
-    this.statusText.setText([`체력: ${this.player.health}/${this.player.maxHealth}`]);
-    const ratio = Math.max(0, this.boss.health / this.boss.maxHealth);
-    this.bossHpBarFill?.setDisplaySize(400 * ratio, 22);
+    const lines = [`체력: ${this.player.health}/${this.player.maxHealth}`];
+    if (this.stageIndex === 2 && this.stepIndex === 3 && this.boss) {
+      lines.push(`보스 체력: ${Math.ceil(this.boss.health)}/${this.boss.maxHealth}`);
+    }
+    this.statusText.setText(lines);
+    if (this.boss && this.bossHpBarFill && this.bossHpBarWidth && this.bossHpBarHeight) {
+      const ratio = Math.max(0, this.boss.health / this.boss.maxHealth);
+      this.bossHpBarFill?.setDisplaySize(this.bossHpBarWidth * ratio, this.bossHpBarHeight);
+    }
   }
 
   handleBossDefeat() {
@@ -154,7 +236,9 @@ export default class BossScene extends Phaser.Scene {
       return;
     }
 
+    this.shutdownBoss2PatternSystems();
     this.ending = true;
+    this.endingResult = 'win';
 
     if (this.player?.sprite?.body) {
       this.player.sprite.setVelocity(0, 0);
@@ -219,8 +303,8 @@ export default class BossScene extends Phaser.Scene {
       type: 'weak',
       health: 4,
       damage: 1,
-      speed: 60,
-      attackCooldown: 1500,
+      speed: Math.round(60 * this.bossBattleSpeedMultiplier),
+      attackCooldown: Math.max(220, Math.round(1500 * this.bossBattleDelayScale)),
       detectionRadius: 600,
       attackRange: 60,
       textureKey: 'enemy-basic'
@@ -246,19 +330,47 @@ export default class BossScene extends Phaser.Scene {
   }
 
   update(time, delta) {
-    if (this.ending) return;
+    // 승리/패배가 동시에 발생 가능한 프레임에서는 보스 처치를 우선한다.
+    if (this.boss && !this.boss.isAlive()) {
+      this.handleBossDefeat();
+      return;
+    }
+
+    if (this.ending) {
+      if (this.endingResult === 'lose') {
+        // 전환이 누락된 경우를 위한 failsafe
+        if (!this.loseSceneStarted && time >= (this.deathTransitionAt + 120)) {
+          this.startLoseScene();
+        }
+        this.startLoseScene();
+      }
+      return;
+    }
+
+    // Failsafe: HP가 0 이하 상태면 즉시 패배 시퀀스 시작.
+    if (!this.player.isAlive()) {
+      this.handlePlayerDeath();
+      return;
+    }
 
     this.player.update(time, delta);
 
-    if (this.stageIndex === 2) {
-      // 2-2 단계 보스는 BossScene이 직접 제어
+    if (this.stageIndex === 2 && this.stepIndex === 3) {
+      this.updateBoss2(time);
+      this.boss?.update(time, delta, this.player);
+
+      // 보스가 죽었는지 먼저 체크 (플레이어 사망 체크 전)
+      if (this.boss && !this.boss.isAlive()) {
+        this.handleBossDefeat();
+        return;
+      }
+
+      // 2-3 단계: 플레이어가 떨어지면 패배
       if (this.player.sprite.y > 740 && this.player.isAlive()) {
         this.player.health = 0;
         this.player.defeat();
         return;
       }
-      this.updateBoss2(time);
-      if (!this.boss.isAlive()) this.handleBossDefeat();
       this.updateHUD();
       return;
     }
@@ -304,59 +416,79 @@ export default class BossScene extends Phaser.Scene {
     this.player = new Player(this, 200, 500);
     this.floorSegments.forEach(fs => this.physics.add.collider(this.player.sprite, fs.sprite));
 
-    // 보스 (1-2 단계 보스 스프라이트를 2-2 단계 아레나에서 사용)
+    // 타일 사이로 떨어졌을 때 닿으면 즉사하는 바닥
+    this.deathFloor = this.physics.add.staticImage(this.worldWidth / 2, 732, 'ground-tile');
+    this.deathFloor.setDisplaySize(this.worldWidth, 40).refreshBody();
+    this.deathFloor.setAlpha(0);
+    this.physics.add.overlap(this.player.sprite, this.deathFloor, () => {
+      this.killPlayerFromBoss2Pattern();
+    });
+
+    // 전투 오브젝트
+    this.enemySprites = this.physics.add.group();
+
     this.boss = new Enemy(this, 640, 180, {
       type: 'boss2',
-      health: Math.round(24 * (window.difficulty === 'dorai' ? 2.5 : 1.3)),
-      damage: 2, speed: 0, attackCooldown: 99999,
-      detectionRadius: 0, attackRange: 0,
-      textureKey: 'boss'
+      health: 23,
+      damage: 1,
+      speed: 0,
+      attackCooldown: 999999,
+      detectionRadius: 0,
+      attackRange: 60,
+      textureKey: 'boss2'
     });
-    this.boss.sprite.body.allowGravity = false;
-    this.boss.sprite.setPosition(640, 180);
-    this.boss.sprite.setDisplaySize(219, 243);
-    this.boss.sprite.body.setSize(568, 689).setOffset(224, 227);
-    this.boss.sprite.setVelocity(0, 0);
-    this.bossBaseScaleX = this.boss.sprite.scaleX;
-    this.bossBaseScaleY = this.boss.sprite.scaleY;
+    this.boss.sprite.setDisplaySize(300, 280);
+    this.boss.sprite.setDepth(10);
+    if (this.boss.sprite.body) {
+      this.boss.sprite.body.setAllowGravity(false);
+      this.boss.sprite.body.setImmovable(true);
+      this.boss.sprite.body.setVelocity(0, 0);
+    }
+    this.setBoss2Hitbox(false);
+    this.enemySprites.add(this.boss.sprite);
+
+    // 보스2 패턴 상태
+    this.boss2State = 'idle';
+    this.boss2PatternStarted = false;
+    this.boss2ActionIndex = 0;
+    this.boss2ActionCount = 4;
+    this.boss2Phase = 1;
+    this.boss2Phase2Triggered = false;
+    this.boss2PhaseTransitioning = false;
+    this.boss2HalfHpAttackMultiplier = 1.5;
+    this.boss2HalfHpSpeedBoostMs = 500;
+    this.boss2ActionToken = 0;
+    this.boss2PendingTimers = [];
+    this.boss2CollapsedSegments = new Set();
+    this.boss2LaserVisuals = [];
+    this.boss2SpikeProjectiles = this.physics.add.group({
+      allowGravity: false,
+      immovable: true
+    });
+    this.boss2HomingMissiles = this.physics.add.group({
+      allowGravity: false,
+      immovable: false
+    });
+    this.physics.add.overlap(this.boss2SpikeProjectiles, this.player.sprite, (spikeObj) => {
+      this.onBoss2SpikeOverlap(spikeObj);
+    });
+    this.physics.add.overlap(this.boss2HomingMissiles, this.player.sprite, (missileObj) => {
+      this.onBoss2HomingMissileOverlap(missileObj);
+    });
+    this.boss2Pattern3Remaining = 0;
+    this.boss2Pattern3Finished = false;
+    this.boss2Pattern3ActionToken = 0;
+    this.boss2Anchor = { x: this.boss.sprite.x, y: this.boss.sprite.y };
+    this.boss2AnchorLocked = true;
+    this.boss2MoveTween = null;
+    this.boss2GlobalCrossLaserTimer = null;
     this.boss.invincible = true;
 
-    // 투사체 그룹
-    this.projectileGroup = this.physics.add.group();
-    this.physics.add.overlap(this.player.sprite, this.projectileGroup, (_pl, proj) => {
-      proj.destroy();
-      this.player.takeDamage(1, this.time.now);
-    });
-
-    // 보스 접촉 데미지 (Vulnerable 중에만)
-    this.enemySprites = this.physics.add.group();
-    this.enemySprites.add(this.boss.sprite);
-    this.summonedWeakEnemies = [];
-    this.physics.add.overlap(this.enemySprites, this.player.sprite, (enemySprite) => {
-      const enemy = enemySprite.enemyRef;
-      if (!enemy || !enemy.isAlive()) return;
-      const now = this.time.now;
-      if (now < this.player.dashingUntil && now >= (enemy._dashHitCooldown || 0)) {
-        enemy._dashHitCooldown = now + 400;
-        if (!enemy.invincible) enemy.takeDamage(2);
-      }
-    });
-
-    // 보스 Y 고정 (부유 없음)
-    this.floatTween = null;
-
-    // 패턴 상태 머신 초기화
-    this.boss2State   = 'waiting';
-    this.boss2PatIdx  = -1;
-    this.boss2Ready   = false;  // delayedCall로 첫 패턴 지연
-    this.boss2VulnerableUntil = 0;
-    this.laserGraphic = null;
-    this.laserGlow    = null;
-    this.laserHitCooldown = 0;
-    this.time.delayedCall(3000, () => { if (!this.ending) this.boss2Ready = true; });
+    this.boss2ShieldVisual = this.add.graphics();
+    this.boss2ShieldVisual.setDepth(1190);
 
     // HUD
-    this.titleText = this.add.text(24, 18, this.getStepLabel(2), {
+    this.titleText = this.add.text(24, 18, this.getStepLabel(this.stepIndex), {
       fontFamily: 'Arial', fontSize: '28px', color: '#c080ff'
     }).setScrollFactor(0).setDepth(1000);
 
@@ -364,18 +496,35 @@ export default class BossScene extends Phaser.Scene {
       fontFamily: 'Arial', fontSize: '20px', color: '#edf3ff'
     }).setScrollFactor(0).setDepth(1000);
 
-    this.patternText = this.add.text(640, 58, '', {
-      fontFamily: 'Arial', fontSize: '22px', color: '#ff4444', fontStyle: 'bold'
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(1001);
+    const bossBarWidth = 400;
+    const bossBarHeight = 22;
+    const bossBarX = (this.scale.width - bossBarWidth) / 2;
+    const bossBarY = 14;
+    this.bossHpBarWidth = bossBarWidth;
+    this.bossHpBarHeight = bossBarHeight;
 
-    const bw = 400, bx = (1280 - bw) / 2, by = 14;
-    this.bossHpLabel = this.add.text(640, by - 2, 'BOSS', {
-      fontFamily: 'Arial', fontSize: '14px', color: '#c080ff'
+    this.bossHpLabel = this.add.text(this.scale.width / 2, bossBarY - 2, 'BOSS', {
+      fontFamily: 'Arial',
+      fontSize: '14px',
+      color: '#ff6688'
     }).setOrigin(0.5, 1).setScrollFactor(0).setDepth(1001);
-    this.bossHpBarBg = this.add.rectangle(640, by + 11, bw, 22, 0x1a0030)
-      .setScrollFactor(0).setDepth(1001);
-    this.bossHpBarFill = this.add.rectangle(bx, by + 11, bw, 22, 0xc080ff)
-      .setOrigin(0, 0.5).setScrollFactor(0).setDepth(1002);
+
+    this.bossHpBarBg = this.add.rectangle(
+      this.scale.width / 2, bossBarY + bossBarHeight / 2,
+      bossBarWidth, bossBarHeight, 0x330011
+    ).setScrollFactor(0).setDepth(1001);
+
+    this.bossHpBarFill = this.add.rectangle(
+      bossBarX, bossBarY + bossBarHeight / 2,
+      bossBarWidth, bossBarHeight, 0xff3366
+    ).setOrigin(0, 0.5).setScrollFactor(0).setDepth(1002);
+
+    this.patternText = this.add.text(this.scale.width / 2, 64, '패턴 준비중', {
+      fontFamily: 'Arial', fontSize: '26px', color: '#ff8800', fontStyle: 'bold'
+    }).setOrigin(0.5, 0.5).setScrollFactor(0).setDepth(1000);
+
+    this.patternText.setText('보스 무적: 패턴 진행중');
+    this.patternText.setColor('#c9b6ff');
 
     this.helpText = this.add.text(24, 82, 'WASD 이동 | W 공중대시 | S 강하 | 좌클릭 공격', {
       fontFamily: 'Arial', fontSize: '16px', color: '#b9c9e8'
@@ -383,212 +532,1164 @@ export default class BossScene extends Phaser.Scene {
 
     this.cameras.main.startFollow(this.player.sprite, true, 0.08, 0.08);
     this.updateHUD();
+    if (window.difficulty === 'dorai') {
+      this.startBoss2GlobalCrossLaserLoop();
+    }
+
+    this.events.once('shutdown', () => {
+      this.shutdownBoss2PatternSystems();
+    });
   }
 
-  // ── 상태 머신 tick ────────────────────────────────────────────
-  updateBoss2(time) {
-    if (this.boss2State === 'waiting' && this.boss2Ready) {
-      this.boss2Ready = false;
-      this.startNextBoss2Pattern(time);
-    }
-    if (this.boss2State === 'vulnerable' && time >= this.boss2VulnerableUntil) {
-      this.boss.invincible = true;
-      this.killFloatTween();
-      // 보스를 고정 Y 위치로 복귀
-      this.boss.sprite.setPosition(640, 180);
-      if (this.patternText) this.patternText.setText('');
-      this.boss2State = 'waiting';
-      this.time.delayedCall(1500, () => { if (!this.ending) this.boss2Ready = true; });
-    }
-    // 레이저 데미지 체크
-    if (this.laserGraphic?.active) {
-      const ly = this.laserGraphic.y;
-      if (Math.abs(this.player.sprite.y - ly) < 28 && time >= this.laserHitCooldown) {
-        this.laserHitCooldown = time + 380;
-        this.player.takeDamage(1, time);
-      }
-    }
+  queueBoss2Timer(delay, callback) {
+    if (this.ending) return null;
+    const scaledDelay = this.scaleBossBattleDelay(delay);
+    const timer = this.time.delayedCall(scaledDelay, () => {
+      this.boss2PendingTimers = this.boss2PendingTimers.filter(t => t !== timer);
+      if (this.ending || !this.sys?.isActive()) return;
+      callback();
+    });
+    this.boss2PendingTimers.push(timer);
+    return timer;
   }
 
-  startNextBoss2Pattern(time) {
+  scaleBossBattleDelay(baseMs) {
+    return Math.max(1, Math.round(baseMs * (this.bossBattleDelayScale || 1)));
+  }
+
+  scaleBossBattleSpeed(baseSpeed) {
+    return baseSpeed * (this.bossBattleSpeedMultiplier || 1);
+  }
+
+  clearBoss2Timers() {
+    if (!this.boss2PendingTimers) return;
+    this.boss2PendingTimers.forEach(timer => timer?.remove(false));
+    this.boss2PendingTimers.length = 0;
+  }
+
+  startBoss2PatternLoop() {
+    if (this.boss2PatternStarted || this.ending || this.boss2PhaseTransitioning) return;
+    this.boss2PatternStarted = true;
+    const startDelay = this.boss2Phase === 2 ? 700 : 1300;
+    this.queueBoss2Timer(startDelay, () => this.runNextBoss2Action());
+  }
+
+  runNextBoss2Action() {
     if (this.ending) return;
-    this.boss2PatIdx = (this.boss2PatIdx + 1) % 5;
-    this.boss2State = 'pattern';
+    if (this.boss2PhaseTransitioning) return;
+
+    const action = this.boss2ActionIndex % this.boss2ActionCount;
+    this.boss2ActionIndex += 1;
+    const actionToken = ++this.boss2ActionToken;
     this.boss.invincible = true;
-    this.killFloatTween();
-    switch (this.boss2PatIdx) {
-      case 0: this.executeFloorCrumble(time); break;
-      case 1: this.executeLaserSweep(time);   break;
-      case 2: this.executeEggDive(time);      break;
-      case 3: this.executeProjectileRain(time); break;
-      case 4: this.executeTotalBlackout(time); break;
+
+    // 페이즈별 패턴 실행
+    if (action === 0) {
+      this.runBoss2FloorCollapseAction(actionToken, action);
+      return;
     }
+
+    if (action === 1) {
+      this.runBoss2LaserAction(actionToken, action);
+      return;
+    }
+
+    if (action === 2) {
+      this.runBoss2SideSpikeAction(actionToken, action);
+      return;
+    }
+
+    // 페이즈2에서만: 크로스 레이저 (action 3)
+    if (action === 3) {
+      if (this.boss2Phase >= 2) {
+        this.runBoss2CrossLaserAction(actionToken, action);
+        return;
+      } else {
+        // 페이즈1에서 action 3은 Vulnerable
+        this.runBoss2VulnerableAction(actionToken, action);
+        return;
+      }
+    }
+
+    // 페이즈2에서만: Vulnerable (action 4)
+    if (action === 4) {
+      if (this.boss2Phase >= 2) {
+        this.runBoss2VulnerableAction(actionToken, action);
+        return;
+      }
+    }
+
+    // 처리되지 않은 액션 (에러 로그용)
+    console.error(`[Boss Pattern Error] Unhandled action: ${action}, phase: ${this.boss2Phase}, actionCount: ${this.boss2ActionCount}`);
+    this.queueBoss2Timer(1800, () => this.runNextBoss2Action());
   }
 
-  openVulnerableWindow(duration, time) {
-    if (this.ending) return;
-    this.boss.invincible = false;
-    this.boss2State = 'vulnerable';
-    this.boss2VulnerableUntil = time + duration;
-    this.tweens.add({
-      targets: this.boss.sprite,
-      scaleX: (this.bossBaseScaleX || this.boss.sprite.scaleX) * 1.05,
-      scaleY: (this.bossBaseScaleY || this.boss.sprite.scaleY) * 1.05,
-      duration: 200, yoyo: true, repeat: -1, ease: 'Sine.easeInOut'
-    });
+  isBoss2ActionStale(actionToken) {
+    return this.ending || !this.sys?.isActive() || actionToken !== this.boss2ActionToken;
+  }
+
+  finishBoss2Action(actionToken, action) {
+    if (this.isBoss2ActionStale(actionToken)) return;
+    if (this.boss2PhaseTransitioning) return;
+    this.boss2State = 'idle';
+    
+    // 다음 패턴 시작 전까지 보스를 무적 상태로 설정
+    if (this.boss) {
+      this.boss.invincible = true;
+    }
+
     if (this.patternText) {
-      this.patternText.setText('▼ ATTACK NOW! ▼');
-      this.patternText.setColor('#ff4444');
+      this.patternText.setText('다음 패턴');
+      this.patternText.setColor('#99ddff');
     }
+    this.queueBoss2Timer(900, () => this.runNextBoss2Action());
   }
 
-  killFloatTween() {
-    if (this.floatTween) { this.floatTween.stop(); this.floatTween = null; }
-    this.tweens.killTweensOf(this.boss.sprite);
-    if (this.boss?.sprite) {
-      this.boss.sprite.setScale(this.bossBaseScaleX || this.boss.sprite.scaleX, this.bossBaseScaleY || this.boss.sprite.scaleY);
+  isBoss2HalfHpBuffActive() {
+    if (!this.boss) return false;
+    return this.boss.health <= this.boss.maxHealth * 0.5;
+  }
+
+  getBoss2ScaledDamage(baseDamage) {
+    if (!this.isBoss2HalfHpBuffActive()) return baseDamage;
+    return Math.max(1, Math.ceil(baseDamage * this.boss2HalfHpAttackMultiplier));
+  }
+
+  getBoss2FasterDelay(baseMs) {
+    if (!this.isBoss2HalfHpBuffActive()) return baseMs;
+    return Math.max(80, baseMs - this.boss2HalfHpSpeedBoostMs);
+  }
+
+  maybeTriggerBoss2Phase2() {
+    if (!this.boss || !this.boss.isAlive()) return;
+    if (this.boss2Phase2Triggered || this.boss2PhaseTransitioning) return;
+    if (this.boss.health > this.boss.maxHealth * 0.5) return;
+
+    this.boss2Phase2Triggered = true;
+    this.boss2PhaseTransitioning = true;
+    this.boss2PatternStarted = false;
+    this.boss2State = 'phase2-transition';
+    this.boss2ActionToken += 1;
+
+    this.clearBoss2Timers();
+    this.clearBoss2MoveTween();
+    this.clearBoss2LaserVisuals();
+    this.restoreCollapsedFloorSegments();
+    this.clearBoss2SpikeProjectiles();
+    this.clearBoss2HomingMissiles();
+
+    this.boss.invincible = true;
+    this.setBoss2Hitbox(false);
+    this.boss2AnchorLocked = true;
+
+    if (this.patternText) {
+      this.patternText.setText('PHASE 2 돌입!');
+      this.patternText.setColor('#ff5476');
     }
-  }
 
-  // ── 지면 붕괴 헬퍼 ────────────────────────────────────────────
-  collapseFloorSegment(idx, autoRestore = true) {
-    const fs = this.floorSegments[idx];
-    if (!fs || fs.collapsed) return;
-    fs.sprite.setTint(0xff3333);
-    this.time.delayedCall(800, () => {
-      if (this.ending) return;
-      fs.collapsed = true;
-      fs.sprite.setVisible(false);
-      fs.sprite.body.enable = false;
-      if (autoRestore) {
-        this.time.delayedCall(2000, () => this.restoreFloorSegment(idx));
+    this.cameras.main.shake(240, 0.004);
+    if (this.boss?.sprite?.active) {
+      this.boss.sprite.setTint(0xff5566);
+    }
+
+    this.queueBoss2Timer(350, () => {
+      if (this.ending || !this.boss?.sprite?.active) return;
+      this.boss.sprite.clearTint();
+      this.boss.sprite.setTint(0xffb34d);
+    });
+
+    this.queueBoss2Timer(900, () => {
+      if (this.ending || !this.boss?.sprite?.active) return;
+      this.boss.sprite.clearTint();
+    });
+
+    this.queueBoss2Timer(1800, () => {
+      if (this.ending || !this.boss?.isAlive()) return;
+
+      this.boss2Phase = 2;
+      this.boss2PhaseTransitioning = false;
+      this.boss2ActionIndex = 0;
+      this.boss2ActionCount = 5;
+
+      if (this.patternText) {
+        this.patternText.setText('PHASE 2: 패턴 강화');
+        this.patternText.setColor('#ff7a5c');
       }
+      this.startBoss2PatternLoop();
     });
   }
 
-  restoreFloorSegment(idx) {
-    const fs = this.floorSegments[idx];
-    if (!fs) return;
-    fs.collapsed = false;
-    fs.sprite.setVisible(true);
-    fs.sprite.body.enable = true;
-    fs.sprite.refreshBody();
-    fs.sprite.clearTint();
-    fs.sprite.setAlpha(1);
-  }
+  runBoss2VulnerableAction(actionToken, action) {
+    if (this.isBoss2ActionStale(actionToken)) return;
+    this.boss2State = 'pattern4-vulnerable';
+    this.boss.invincible = false;
+    this.setBoss2Hitbox(true);
+    const vulnerableDurationMs = this.boss2Phase >= 2 ? 3200 : 5000;
+    this.clearBoss2MoveTween();
+    this.boss2AnchorLocked = false;
 
-  // ── 패턴 1: 지면 붕괴 ────────────────────────────────────────
-  executeFloorCrumble(time) {
-    if (this.patternText) { this.patternText.setText('FLOOR CRUMBLE!'); this.patternText.setColor('#ff8800'); }
-    const indices = Phaser.Utils.Array.Shuffle([0,1,2,3,4]).slice(0,3);
-    indices.forEach(i => this.collapseFloorSegment(i, true));
-    // 붕괴 중 투사체 3발
-    this.time.delayedCall(500, () => {
-      for (let i = 0; i < 3; i++) {
-        const p = this.projectileGroup.create(
-          this.boss.sprite.x + (i-1)*50, this.boss.sprite.y + 80, 'boss2-projectile');
-        p.setDisplaySize(14, 14).setDepth(6);
-        p.body.allowGravity = false;
-        p.setVelocityY(300);
-        this.time.delayedCall(3000, () => { if (p.active) p.destroy(); });
-      }
-    });
-    this.time.delayedCall(3800, () => { if (!this.ending) this.openVulnerableWindow(3000, this.time.now); });
-  }
+    const anchorX = this.boss2Anchor?.x ?? this.boss?.sprite?.x ?? 640;
+    const anchorY = this.boss2Anchor?.y ?? this.boss?.sprite?.y ?? 180;
+    const dropY = 640;
 
-  // ── 패턴 2: 레이저 스윕 ──────────────────────────────────────
-  executeLaserSweep(time) {
-    if (this.patternText) { this.patternText.setText('LASER SWEEP!'); this.patternText.setColor('#ff2244'); }
-    this.laserGraphic = this.add.rectangle(640, 175, 1280, 18, 0xff2244, 0.88);
-    this.laserGraphic.setDepth(6);
-    this.laserGlow = this.add.rectangle(640, 175, 1280, 36, 0xff2244, 0.2);
-    this.laserGlow.setDepth(5);
-    this.tweens.add({
-      targets: [this.laserGraphic, this.laserGlow], y: 575, duration: 2800, ease: 'Linear',
-      onComplete: () => {
-        this.laserGraphic?.destroy(); this.laserGlow?.destroy();
-        this.laserGraphic = null; this.laserGlow = null;
-        if (!this.ending) this.openVulnerableWindow(3000, this.time.now);
-      }
-    });
-  }
-
-  // ── 패턴 3: 알 낙하 ──────────────────────────────────────────
-  executeEggDive(time) {
-    if (this.patternText) { this.patternText.setText('EGG DIVE!'); this.patternText.setColor('#ffaa00'); }
-    const tx = Phaser.Math.Clamp(this.player.sprite.x, 80, 1200);
-    // 경고 삼각형 마커
-    const warn = this.add.triangle(tx, 640, 0, 32, 16, 0, 32, 32, 0xff2200, 0.9).setDepth(6);
-    this.tweens.add({ targets: warn, alpha: 0.15, duration: 120, yoyo: true, repeat: 5,
-      onComplete: () => warn.destroy() });
-    // 보스 수평 이동 후 낙하
-    this.tweens.add({ targets: this.boss.sprite, x: tx, duration: 500, ease: 'Quad.easeOut' });
-    this.time.delayedCall(900, () => {
-      if (this.ending) return;
-      this.tweens.add({
-        targets: this.boss.sprite, y: 540, duration: 280, ease: 'Quad.easeIn',
+    if (this.boss?.sprite?.active) {
+      this.boss.sprite.setPosition(anchorX, anchorY);
+      this.boss2MoveTween = this.tweens.add({
+        targets: this.boss.sprite,
+        y: dropY,
+        duration: 420,
+        ease: 'Quad.easeIn',
         onComplete: () => {
-          this.cameras.main.shake(220, 0.012);
-          // 충격파
-          const sw = this.add.circle(this.boss.sprite.x, 596, 18, 0xff6600, 0.6).setDepth(5);
-          this.tweens.add({ targets: sw, scaleX: 18, scaleY: 0.25, alpha: 0, duration: 420, onComplete: () => sw.destroy() });
-          if (Math.abs(this.player.sprite.x - this.boss.sprite.x) < 260) {
-            this.player.takeDamage(2, this.time.now);
-          }
-          // 착지 세그먼트 붕괴
-          const nearSeg = this.floorSegments.findIndex(fs => Math.abs(fs.sprite.x - this.boss.sprite.x) < 130);
-          if (nearSeg >= 0) this.collapseFloorSegment(nearSeg, true);
-          // 위로 복귀
-          this.tweens.add({
-            targets: this.boss.sprite, y: 180, duration: 700, ease: 'Back.easeOut',
-            onComplete: () => { if (!this.ending) this.openVulnerableWindow(3000, this.time.now); }
-          });
+          this.boss2MoveTween = null;
         }
       });
+    }
+
+    if (this.patternText) {
+      this.patternText.setText(this.boss2Phase >= 2 ? '패턴5: 3.2초 딜타임(하강)' : '패턴4: 5초 딜타임(하강)');
+      this.patternText.setColor('#a8ffb3');
+    }
+
+    this.queueBoss2Timer(vulnerableDurationMs - 600, () => {
+      if (this.isBoss2ActionStale(actionToken)) return;
+      this.clearBoss2MoveTween();
+      if (this.boss?.sprite?.active) {
+        this.boss2MoveTween = this.tweens.add({
+          targets: this.boss.sprite,
+          x: anchorX,
+          y: anchorY,
+          duration: 450,
+          ease: 'Quad.easeOut',
+          onComplete: () => {
+            this.boss2MoveTween = null;
+          }
+        });
+      }
+    });
+
+    this.queueBoss2Timer(vulnerableDurationMs, () => {
+      if (this.isBoss2ActionStale(actionToken)) return;
+      this.clearBoss2MoveTween();
+      if (this.boss?.sprite?.active) {
+        this.boss.sprite.setPosition(anchorX, anchorY);
+      }
+      this.boss2AnchorLocked = true;
+      this.boss.invincible = true;
+      this.setBoss2Hitbox(false);
+      this.finishBoss2Action(actionToken, action);
     });
   }
 
-  // ── 패턴 4: 투사체 산탄 ──────────────────────────────────────
-  executeProjectileRain(time) {
-    if (this.patternText) { this.patternText.setText('PROJECTILE RAIN!'); this.patternText.setColor('#60aaff'); }
-    let wavesLeft = 3;
-    const fireWave = () => {
-      if (this.ending) return;
-      for (let i = 0; i < 8; i++) {
-        const angle = (i / 8) * Math.PI * 2;
-        const p = this.projectileGroup.create(
-          this.boss.sprite.x, this.boss.sprite.y, 'boss2-projectile');
-        p.setDisplaySize(14, 14).setDepth(6);
-        p.body.allowGravity = false;
-        p.setVelocity(Math.cos(angle)*300, Math.sin(angle)*300);
-        this.time.delayedCall(2800, () => { if (p.active) p.destroy(); });
-      }
-      this.tweens.add({ targets: this.boss.sprite, angle: this.boss.sprite.angle + 360, duration: 800, ease: 'Quad.easeOut' });
-      wavesLeft--;
-      if (wavesLeft > 0) this.time.delayedCall(1200, fireWave);
-      else this.time.delayedCall(1400, () => { if (!this.ending) this.openVulnerableWindow(3000, this.time.now); });
-    };
-    this.time.delayedCall(400, fireWave);
+  setBoss2Hitbox(isVulnerable) {
+    const body = this.boss?.sprite?.body;
+    if (!body) return;
+
+    // 딜타임에는 스프라이트 외형에 가깝게 넓혀서 "이미지를 때리면 맞는" 체감을 만든다.
+    if (isVulnerable) {
+      body.setSize(375, 345, true);
+    } else {
+      body.setSize(210, 255, true);
+    }
   }
 
-  // ── 패턴 5: 전면 붕괴 ────────────────────────────────────────
-  executeTotalBlackout(time) {
-    if (this.patternText) { this.patternText.setText('TOTAL BLACKOUT!'); this.patternText.setColor('#ff44ff'); }
-    this.floorSegments.forEach(fs => fs.sprite.setTint(0xff4444));
-    [0,1,2,3].forEach((idx, i) => {
-      this.time.delayedCall(800 + i * 350, () => {
-        const fs = this.floorSegments[idx];
-        if (!fs || fs.collapsed || this.ending) return;
-        fs.collapsed = true;
-        fs.sprite.setVisible(false);
-        fs.sprite.body.enable = false;
+  clearBoss2MoveTween() {
+    if (!this.boss2MoveTween) return;
+    this.boss2MoveTween.stop();
+    this.boss2MoveTween = null;
+  }
+
+  drawBoss2LaserLine(beam, { color, alpha, width }) {
+    const g = this.add.graphics();
+    g.setDepth(1200);
+    g.lineStyle(width, color, alpha);
+    g.beginPath();
+    g.moveTo(beam.x1, beam.y1);
+    g.lineTo(beam.x2, beam.y2);
+    g.strokePath();
+    this.boss2LaserVisuals.push(g);
+    return g;
+  }
+
+  clearBoss2LaserVisuals() {
+    if (!this.boss2LaserVisuals?.length) return;
+    this.boss2LaserVisuals.forEach(v => {
+      if (v?.active) v.destroy();
+    });
+    this.boss2LaserVisuals.length = 0;
+  }
+
+  getBoss2LaserBeam() {
+    const sx = this.boss?.sprite?.x ?? 640;
+    const sy = this.boss?.sprite?.y ?? 180;
+    const px = Phaser.Math.Clamp(this.player?.sprite?.x ?? sx, 0, this.worldWidth);
+    const py = Phaser.Math.Clamp(this.player?.sprite?.y ?? sy + 1, 0, 720);
+
+    let vx = px - sx;
+    let vy = py - sy;
+    const len = Math.hypot(vx, vy);
+
+    // 플레이어와 거의 같은 좌표면 기본적으로 아래 방향으로 발사
+    if (len < 0.0001) {
+      vx = 0;
+      vy = 1;
+    } else {
+      vx /= len;
+      vy /= len;
+    }
+
+    const minX = 0;
+    const maxX = this.worldWidth;
+    const minY = 0;
+    const maxY = 720;
+    const tCandidates = [];
+
+    if (vx > 0.0001) tCandidates.push((maxX - sx) / vx);
+    else if (vx < -0.0001) tCandidates.push((minX - sx) / vx);
+
+    if (vy > 0.0001) tCandidates.push((maxY - sy) / vy);
+    else if (vy < -0.0001) tCandidates.push((minY - sy) / vy);
+
+    let tEnd = 1200;
+    for (const t of tCandidates) {
+      if (t > 0 && t < tEnd) tEnd = t;
+    }
+
+    return {
+      x1: sx,
+      y1: sy,
+      x2: sx + vx * tEnd,
+      y2: sy + vy * tEnd
+    };
+  }
+
+  getPlayerLaserCollisionPoints() {
+    if (!this.player?.sprite?.active) return [];
+    const body = this.player.sprite.body;
+    const cx = this.player.sprite.x;
+    const cy = this.player.sprite.y;
+    if (!body) {
+      return [{ x: cx, y: cy }];
+    }
+
+    const left = body.left;
+    const right = body.right;
+    const top = body.top;
+    const bottom = body.bottom;
+    const midX = (left + right) * 0.5;
+    const midY = (top + bottom) * 0.5;
+
+    return [
+      { x: midX, y: midY },
+      { x: left, y: top },
+      { x: right, y: top },
+      { x: left, y: bottom },
+      { x: right, y: bottom },
+      { x: midX, y: top },
+      { x: midX, y: bottom },
+      { x: left, y: midY },
+      { x: right, y: midY }
+    ];
+  }
+
+  distancePointToSegment(px, py, x1, y1, x2, y2) {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq <= 0.0001) {
+      const ddx = px - x1;
+      const ddy = py - y1;
+      return Math.sqrt(ddx * ddx + ddy * ddy);
+    }
+    let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+    t = Phaser.Math.Clamp(t, 0, 1);
+    const cx = x1 + t * dx;
+    const cy = y1 + t * dy;
+    const ddx = px - cx;
+    const ddy = py - cy;
+    return Math.sqrt(ddx * ddx + ddy * ddy);
+  }
+
+  applyBoss2LaserHit(beam, width = 34, baseDamage = 3) {
+    if (!this.player?.sprite?.active || !this.player.isAlive()) return;
+    const points = this.getPlayerLaserCollisionPoints();
+    let hit = false;
+    for (const p of points) {
+      const dist = this.distancePointToSegment(p.x, p.y, beam.x1, beam.y1, beam.x2, beam.y2);
+      if (dist <= width) {
+        hit = true;
+        break;
+      }
+    }
+
+    if (hit) {
+      this.player.takeDamage(this.getBoss2ScaledDamage(baseDamage), this.time.now);
+      if (!this.player.isAlive()) {
+        this.handlePlayerDeath();
+      }
+    }
+  }
+
+  killPlayerFromBoss2Pattern() {
+    if (!this.player || this.ending || !this.player.isAlive()) return;
+    this.player.health = 0;
+    this.player.defeat();
+    this.handlePlayerDeath();
+  }
+
+  runBoss2LaserAction(actionToken, action) {
+    if (!this.boss?.sprite?.active) {
+      this.queueBoss2Timer(1200, () => this.runNextBoss2Action());
+      return;
+    }
+
+    this.boss2State = 'pattern2-laser';
+    if (this.boss) {
+      this.boss.invincible = true;
+    }
+    const isPhase2 = this.boss2Phase >= 2;
+    const extraShots = this.isBoss2HalfHpBuffActive() ? 2 : 0;
+    const totalShotsBase = (isPhase2 ? Phaser.Math.Between(5, 9) : Phaser.Math.Between(2, 6)) + extraShots;
+    const totalShots = Math.max(1, Math.round(totalShotsBase * this.bossLaserCountMultiplier));
+    const fireIntervalMs = this.getBoss2FasterDelay(isPhase2 ? 350 : 500);
+    const warningLeadMs = isPhase2 ? 750 : 1000;
+
+    if (this.patternText) {
+      this.patternText.setText(`패턴2: 레이저 ${totalShots}연사`);
+      this.patternText.setColor('#ffb347');
+    }
+
+    for (let i = 0; i < totalShots; i += 1) {
+      const shotNumber = i + 1;
+      const shotAtMs = warningLeadMs + i * fireIntervalMs;
+      const warningAtMs = Math.max(0, shotAtMs - warningLeadMs);
+      let warningGraphic = null;
+      let beam = null;
+
+      this.queueBoss2Timer(warningAtMs, () => {
+        if (this.isBoss2ActionStale(actionToken)) return;
+        if (this.ending) return;
+        beam = this.getBoss2LaserBeam();
+        warningGraphic = this.drawBoss2LaserLine(beam, {
+          color: 0xff9900,
+          alpha: 0.95,
+          width: 10
+        });
+
+        if (this.patternText) {
+          this.patternText.setText(`패턴2: 경고 ${shotNumber}/${totalShots}`);
+          this.patternText.setColor('#ffae42');
+        }
+      });
+
+      this.queueBoss2Timer(shotAtMs, () => {
+        if (this.isBoss2ActionStale(actionToken)) return;
+        if (warningGraphic?.active) warningGraphic.destroy();
+        if (!beam) beam = this.getBoss2LaserBeam();
+
+        const laser = this.drawBoss2LaserLine(beam, {
+          color: 0xff3355,
+          alpha: 1,
+          width: isPhase2 ? 22 : 18
+        });
+        this.applyBoss2LaserHit(beam, isPhase2 ? 44 : 36, 6);
+
+        if (this.patternText) {
+          this.patternText.setText(`패턴2: 발사 ${shotNumber}/${totalShots}`);
+          this.patternText.setColor('#ff5e5e');
+        }
+
+        this.queueBoss2Timer(150, () => {
+          if (this.isBoss2ActionStale(actionToken)) return;
+          if (laser?.active) laser.destroy();
+        });
+      });
+    }
+
+    const finalShotAt = warningLeadMs + (totalShots - 1) * fireIntervalMs;
+    if (!isPhase2) {
+      this.queueBoss2Timer(finalShotAt + 900, () => {
+        this.finishBoss2Action(actionToken, action);
+      });
+      return;
+    }
+
+    const missileStartAt = finalShotAt + 400;
+    const missileCount = 4;
+    const missileIntervalMs = 220;
+
+    this.queueBoss2Timer(missileStartAt, () => {
+      if (this.isBoss2ActionStale(actionToken)) return;
+      if (this.patternText) {
+        this.patternText.setText('패턴2: 유도 미사일 전개');
+        this.patternText.setColor('#ff7ea1');
+      }
+    });
+
+    for (let i = 0; i < missileCount; i += 1) {
+      this.queueBoss2Timer(missileStartAt + i * missileIntervalMs, () => {
+        if (this.isBoss2ActionStale(actionToken)) return;
+        this.spawnBoss2HomingMissile(i);
+      });
+    }
+
+    const missileFinishAt = missileStartAt + (missileCount - 1) * missileIntervalMs;
+    const postMissileLaserCount = Math.max(1, Math.round(Phaser.Math.Between(20, 40) * this.bossLaserCountMultiplier));
+    const postMissileLaserIntervalMs = 100;
+    const postMissileLaserWarningLeadMs = 500;
+    const missileHomingEndAt = missileFinishAt + 3000;
+    const postMissileLaserStartAt = missileHomingEndAt + 120;
+
+    this.queueBoss2Timer(postMissileLaserStartAt, () => {
+      if (this.isBoss2ActionStale(actionToken)) return;
+      if (this.patternText) {
+        this.patternText.setText(`패턴2: 미사일 후속 레이저 ${postMissileLaserCount}연사`);
+        this.patternText.setColor('#ff4f7a');
+      }
+    });
+
+    for (let i = 0; i < postMissileLaserCount; i += 1) {
+      const shotNumber = i + 1;
+      const shotAtMs = postMissileLaserStartAt + i * postMissileLaserIntervalMs;
+      const warningAtMs = Math.max(0, shotAtMs - postMissileLaserWarningLeadMs);
+      let warningGraphic = null;
+      let beam = null;
+
+      this.queueBoss2Timer(warningAtMs, () => {
+        if (this.isBoss2ActionStale(actionToken)) return;
+        beam = this.getBoss2LaserBeam();
+        warningGraphic = this.drawBoss2LaserLine(beam, {
+          color: 0xff9900,
+          alpha: 0.95,
+          width: 10
+        });
+
+        if (this.patternText) {
+          this.patternText.setText(`패턴2: 후속 경고 ${shotNumber}/${postMissileLaserCount}`);
+          this.patternText.setColor('#ffae42');
+        }
+      });
+
+      this.queueBoss2Timer(shotAtMs, () => {
+        if (this.isBoss2ActionStale(actionToken)) return;
+        if (warningGraphic?.active) warningGraphic.destroy();
+        if (!beam) beam = this.getBoss2LaserBeam();
+        const laser = this.drawBoss2LaserLine(beam, {
+          color: 0xff2f55,
+          alpha: 1,
+          width: 20
+        });
+        this.applyBoss2LaserHit(beam, 60, 4);
+
+        if (this.patternText) {
+          this.patternText.setText(`패턴2: 후속 레이저 ${shotNumber}/${postMissileLaserCount}`);
+          this.patternText.setColor('#ff5e5e');
+        }
+
+        this.queueBoss2Timer(120, () => {
+          if (this.isBoss2ActionStale(actionToken)) return;
+          if (laser?.active) laser.destroy();
+        });
+      });
+    }
+
+    const postMissileLaserFinishAt = postMissileLaserStartAt + (postMissileLaserCount - 1) * postMissileLaserIntervalMs;
+
+    // 2페이즈 2번째 턴은 레이저 -> 미사일 -> 창 연계를 보장한다.
+    const comboSpikeStartAt = postMissileLaserFinishAt + 220;
+    const comboLeftShots = Phaser.Math.Between(2, 4);
+    const comboRightShots = Phaser.Math.Between(2, 4);
+    const comboSpikeIntervalMs = 170;
+    const comboRightDelayMs = 80;
+
+    this.queueBoss2Timer(comboSpikeStartAt, () => {
+      if (this.isBoss2ActionStale(actionToken)) return;
+      if (this.patternText) {
+        this.patternText.setText(`패턴2: 후속 창 좌${comboLeftShots}/우${comboRightShots}`);
+        this.patternText.setColor('#ff9f68');
+      }
+    });
+
+    for (let i = 0; i < comboLeftShots; i += 1) {
+      this.queueBoss2Timer(comboSpikeStartAt + i * comboSpikeIntervalMs, () => {
+        if (this.isBoss2ActionStale(actionToken)) return;
+        if (this.ending) return;
+        const targetY = Phaser.Math.Clamp(this.player?.sprite?.y ?? 540, 120, 640);
+        this.spawnBoss2SideSpike(true, targetY);
+      });
+    }
+
+    for (let i = 0; i < comboRightShots; i += 1) {
+      this.queueBoss2Timer(comboSpikeStartAt + comboRightDelayMs + i * comboSpikeIntervalMs, () => {
+        if (this.isBoss2ActionStale(actionToken)) return;
+        if (this.ending) return;
+        const targetY = Phaser.Math.Clamp(this.player?.sprite?.y ?? 540, 120, 640);
+        this.spawnBoss2SideSpike(false, targetY);
+      });
+    }
+
+    const comboLastSpawnAt = comboSpikeStartAt + comboRightDelayMs + (Math.max(comboLeftShots, comboRightShots) - 1) * comboSpikeIntervalMs;
+    this.queueBoss2Timer(comboLastSpawnAt + 850, () => {
+      this.finishBoss2Action(actionToken, action);
+    });
+  }
+
+  spawnBoss2HomingMissile(slot = 0) {
+    if (!this.boss?.sprite?.active || !this.player?.sprite?.active || this.ending) return null;
+
+    const sourceX = this.boss.sprite.x;
+    const sourceY = this.boss.sprite.y + 10;
+    const offsetX = (slot - 1.5) * 130;
+    const missile = this.physics.add.image(sourceX + offsetX, sourceY, 'boss2-missile-real');
+    missile.setDisplaySize(130, 130);
+    missile.setFlip(true, true);
+    missile.setDepth(1185);
+    missile.setTint(0xff8dad);
+    missile._bornAt = this.time.now;
+    missile._expireAt = this.time.now + 3000;
+    missile._speed = Math.round(this.scaleBossBattleSpeed(330));
+    missile._turnRate = Math.min(0.45, 0.15 * this.bossBattleSpeedMultiplier);
+    missile._nextHitAt = 0;
+
+    if (missile.body) {
+      missile.body.setAllowGravity(false);
+      missile.body.allowGravity = false;
+      missile.body.setGravity(0, 0);
+      missile.body.setDrag(0, 0);
+      const maxV = Math.round(this.scaleBossBattleSpeed(480));
+      missile.body.setMaxVelocity(maxV, maxV);
+      missile.body.setCircle(40, 25, 25);
+      missile.body.setVelocity(
+        Phaser.Math.Between(-30, 30) * this.bossBattleSpeedMultiplier,
+        90 * this.bossBattleSpeedMultiplier
+      );
+    }
+
+    this.boss2HomingMissiles?.add(missile);
+
+    return missile;
+  }
+
+  onBoss2HomingMissileOverlap(missile) {
+    if (this.ending || !this.player?.isAlive() || !missile?.active) return;
+    const now = this.time.now;
+    if (now < (missile._nextHitAt || 0)) return;
+    missile._nextHitAt = now + 100;
+    
+    // 미사일을 즉시 비활성화해서 중복 충돌 방지
+    missile.setActive(false);
+    
+    this.player.takeDamage(3, now);
+    
+    // 플레이어가 죽었는지 확인
+    if (!this.player.isAlive()) {
+      this.handlePlayerDeath();
+    }
+    
+    // 미사일 파괴는 나중에
+    this.time.delayedCall(10, () => {
+      if (missile?.active) missile.destroy();
+    });
+  }
+
+  runBoss2CrossLaserAction(actionToken, action) {
+    if (this.isBoss2ActionStale(actionToken)) return;
+    this.boss2State = 'pattern4-cross-laser';
+    if (this.boss) {
+      this.boss.invincible = true;
+    }
+
+    const burstCount = Math.max(1, Math.round(Phaser.Math.Between(3, 5) * this.bossLaserCountMultiplier));
+    const warningLeadMs = 700;
+    const intervalMs = 480;
+
+    if (this.patternText) {
+      this.patternText.setText(`패턴4: 크로스 레이저 ${burstCount}회`);
+      this.patternText.setColor('#ff8a4c');
+    }
+
+    for (let i = 0; i < burstCount; i += 1) {
+      const warningAt = i * intervalMs;
+      const fireAt = warningAt + warningLeadMs;
+      let warningGraphics = [];
+      let beams = [];
+
+      this.queueBoss2Timer(warningAt, () => {
+        if (this.isBoss2ActionStale(actionToken)) return;
+        beams = this.getBoss2CrossBeams();
+        warningGraphics = beams.map(beam => this.drawBoss2LaserLine(beam, {
+          color: 0xffc457,
+          alpha: 0.9,
+          width: 9
+        }));
+
+        if (this.patternText) {
+          this.patternText.setText(`패턴4: 경고 ${i + 1}/${burstCount}`);
+          this.patternText.setColor('#ffb36b');
+        }
+      });
+
+      this.queueBoss2Timer(fireAt, () => {
+        if (this.isBoss2ActionStale(actionToken)) return;
+        warningGraphics.forEach(g => {
+          if (g?.active) g.destroy();
+        });
+        if (!beams.length) beams = this.getBoss2CrossBeams();
+
+        const fired = beams.map(beam => this.drawBoss2LaserLine(beam, {
+          color: 0xff3c57,
+          alpha: 1,
+          width: 16
+        }));
+        beams.forEach(beam => this.applyBoss2LaserHit(beam, 34));
+
+        if (this.patternText) {
+          this.patternText.setText(`패턴4: 발사 ${i + 1}/${burstCount}`);
+          this.patternText.setColor('#ff6f79');
+        }
+
+        this.queueBoss2Timer(130, () => {
+          if (this.isBoss2ActionStale(actionToken)) return;
+          fired.forEach(g => {
+            if (g?.active) g.destroy();
+          });
+        });
+      });
+    }
+
+    const finishAt = warningLeadMs + (burstCount - 1) * intervalMs;
+    this.queueBoss2Timer(finishAt + 850, () => {
+      this.finishBoss2Action(actionToken, action);
+    });
+  }
+
+  getBoss2CrossBeams() {
+    const px = Phaser.Math.Clamp(this.player?.sprite?.x ?? this.worldWidth / 2, 80, this.worldWidth - 80);
+    const left = { x1: 72, y1: 96, x2: px + 90, y2: 690 };
+    const right = { x1: this.worldWidth - 72, y1: 96, x2: px - 90, y2: 690 };
+    return [left, right];
+  }
+
+  fireBoss2GlobalCrossLaser() {
+    if (this.ending || !this.player?.isAlive()) return;
+    const beams = this.getBoss2CrossBeams();
+    const fired = beams.map(beam => this.drawBoss2LaserLine(beam, {
+      color: 0xff4669,
+      alpha: 1,
+      width: 15
+    }));
+    beams.forEach(beam => this.applyBoss2LaserHit(beam, 34, 2));
+
+    this.queueBoss2Timer(120, () => {
+      fired.forEach(g => {
+        if (g?.active) g.destroy();
       });
     });
-    this.time.delayedCall(800 + 3*350 + 2000, () => {
-      if (this.ending) return;
-      [0,1,2,3].forEach(i => this.restoreFloorSegment(i));
-      this.time.delayedCall(500, () => { if (!this.ending) this.openVulnerableWindow(4000, this.time.now); });
+  }
+
+  startBoss2GlobalCrossLaserLoop() {
+    if (this.boss2GlobalCrossLaserTimer) return;
+    this.boss2GlobalCrossLaserTimer = this.time.addEvent({
+      delay: 1000,
+      loop: true,
+      callback: () => {
+        if (this.ending || !this.sys?.isActive()) return;
+        this.fireBoss2GlobalCrossLaser();
+      }
     });
+  }
+
+  clearBoss2GlobalCrossLaserLoop() {
+    if (!this.boss2GlobalCrossLaserTimer) return;
+    this.boss2GlobalCrossLaserTimer.remove(false);
+    this.boss2GlobalCrossLaserTimer = null;
+  }
+
+  spawnBoss2SideSpike(fromLeft, y) {
+    if (!this.player?.sprite?.active || this.ending) return;
+    const wallInset = 36;
+    const x = fromLeft ? wallInset : this.worldWidth - wallInset;
+    const speed = Math.round(this.scaleBossBattleSpeed(520));
+    const velocityX = fromLeft ? speed : -speed;
+
+    const spike = this.physics.add.image(x, y, 'boss2-spear');
+    spike.setDisplaySize(112, 20);
+    spike.setAngle(fromLeft ? 0 : 180);
+    spike.setDepth(1100);
+    spike._fromLeft = fromLeft;
+    spike._vx = velocityX;
+    spike._fixedY = y;
+    spike._targetWallX = fromLeft ? this.worldWidth - wallInset : wallInset;
+    spike._countedAsArrived = false;
+
+    this.boss2SpikeProjectiles?.add(spike);
+
+    if (spike.body) {
+      spike.body.setEnable(true);
+      spike.body.setAllowGravity(false);
+      spike.body.allowGravity = false;
+      spike.body.setGravity(0, 0);
+      spike.body.setImmovable(false);
+      spike.body.moves = true;
+      spike.body.setAcceleration(0, 0);
+      spike.body.setDrag(0, 0);
+      spike.body.setMaxVelocity(700, 0);
+      spike.body.setVelocityY(0);
+      spike.body.setVelocityX(velocityX);
+      spike.body.setSize(92, 14, true);
+    }
+
+    return spike;
+  }
+
+  onBoss2SpikeOverlap(spike) {
+    if (this.ending || !this.player?.isAlive() || !spike?.active) return;
+    const now = this.time.now;
+    if (now < (spike._nextHitAt || 0)) return;
+    spike._nextHitAt = now + 120;
+    this.player.takeDamage(1, now);
+    if (!this.player.isAlive()) {
+      this.handlePlayerDeath();
+    }
+  }
+
+  handleBoss2Pattern3SpearArrived(spike) {
+    if (!spike || spike._countedAsArrived) return;
+    spike._countedAsArrived = true;
+    this.boss2Pattern3Remaining = Math.max(0, (this.boss2Pattern3Remaining || 0) - 1);
+
+    if (this.boss2Pattern3Remaining > 0) return;
+    if (this.boss2Pattern3Finished || this.ending || this.boss2State !== 'pattern3-side-spike') return;
+
+    this.boss2Pattern3Finished = true;
+    this.finishBoss2Action(this.boss2Pattern3ActionToken, 2);
+  }
+
+  runBoss2SideSpikeAction(actionToken, action) {
+    this.boss2State = 'pattern3-side-spike';
+    if (this.boss) {
+      this.boss.invincible = true;
+    }
+    this.boss2Pattern3ActionToken = actionToken;
+    const isPhase2 = this.boss2Phase >= 2;
+    const leftShots = isPhase2 ? Phaser.Math.Between(2, 5) : Phaser.Math.Between(1, 4);
+    const rightShots = isPhase2 ? Phaser.Math.Between(2, 5) : Phaser.Math.Between(1, 4);
+    const shotIntervalMs = isPhase2 ? 320 : 450;
+    const rightStartDelayMs = isPhase2 ? 90 : 180;
+
+    this.boss2Pattern3Remaining = leftShots + rightShots;
+    this.boss2Pattern3Finished = false;
+
+    if (this.boss2Pattern3Remaining <= 0) {
+      this.finishBoss2Action(actionToken, action);
+      return;
+    }
+
+    if (this.patternText) {
+      this.patternText.setText(`패턴3: 좌${leftShots} / 우${rightShots} 창`);
+      this.patternText.setColor('#ff9f68');
+    }
+
+    for (let i = 0; i < leftShots; i += 1) {
+      this.queueBoss2Timer(i * shotIntervalMs, () => {
+        if (this.isBoss2ActionStale(actionToken)) return;
+        if (this.ending) return;
+        const targetY = Phaser.Math.Clamp(this.player?.sprite?.y ?? 540, 120, 640);
+        this.spawnBoss2SideSpike(true, targetY);
+        if (this.patternText) {
+          this.patternText.setText(`패턴3: 왼쪽 ${i + 1}/${leftShots}`);
+          this.patternText.setColor('#ff7f50');
+        }
+      });
+    }
+
+    for (let i = 0; i < rightShots; i += 1) {
+      this.queueBoss2Timer(rightStartDelayMs + i * shotIntervalMs, () => {
+        if (this.isBoss2ActionStale(actionToken)) return;
+        if (this.ending) return;
+        const targetY = Phaser.Math.Clamp(this.player?.sprite?.y ?? 540, 120, 640);
+        this.spawnBoss2SideSpike(false, targetY);
+        if (this.patternText) {
+          this.patternText.setText(`패턴3: 오른쪽 ${i + 1}/${rightShots}`);
+          this.patternText.setColor('#ff7f50');
+        }
+      });
+    }
+
+    // 모든 스파이크가 생성된 후 충분한 시간이 지나면 강제로 패턴 종료 (타임아웃)
+    const lastSpikeAt = rightStartDelayMs + (rightShots - 1) * shotIntervalMs;
+    const timeoutMs = lastSpikeAt + 2500; // 마지막 스파이크 생성 후 2.5초
+    this.queueBoss2Timer(timeoutMs, () => {
+      if (this.isBoss2ActionStale(actionToken)) return;
+      if (this.boss2Pattern3Finished) return;
+      if (this.ending) return;
+      // 패턴이 아직 진행 중이면 강제 종료
+      if (this.boss2State === 'pattern3-side-spike') {
+        this.finishBoss2Action(actionToken, action);
+      }
+    });
+  }
+
+  collapseFloorSegment(index) {
+    const seg = this.floorSegments?.[index];
+    if (!seg || seg.collapsed || !seg.sprite?.active) return;
+
+    seg.collapsed = true;
+    this.boss2CollapsedSegments.add(index);
+    seg.sprite.disableBody(true, true);
+  }
+
+  restoreFloorSegment(index) {
+    const seg = this.floorSegments?.[index];
+    if (!seg || !seg.collapsed || !seg.sprite) return;
+
+    seg.collapsed = false;
+    this.boss2CollapsedSegments.delete(index);
+    seg.sprite.enableBody(false, seg.sprite.x, seg.sprite.y, true, true);
+    seg.sprite.refreshBody();
+    seg.sprite.clearTint();
+    seg.sprite.setAlpha(1);
+  }
+
+  restoreCollapsedFloorSegments() {
+    if (!this.floorSegments) return;
+    this.boss2CollapsedSegments.forEach(index => {
+      const seg = this.floorSegments[index];
+      if (!seg || !seg.sprite) return;
+      seg.collapsed = false;
+      seg.sprite.enableBody(false, seg.sprite.x, seg.sprite.y, true, true);
+      seg.sprite.refreshBody();
+      seg.sprite.clearTint();
+      seg.sprite.setAlpha(1);
+    });
+    this.boss2CollapsedSegments.clear();
+  }
+
+  runBoss2FloorCollapseAction(actionToken, action) {
+    if (!this.floorSegments?.length) {
+      this.queueBoss2Timer(1200, () => this.runNextBoss2Action());
+      return;
+    }
+
+    this.boss2State = 'pattern1-collapse';
+    if (this.boss) {
+      this.boss.invincible = true;
+    }
+    const leftToRight = Math.random() < 0.5;
+    const ordered = [...this.floorSegments].sort((a, b) => {
+      const ax = a?.sprite?.x ?? 0;
+      const bx = b?.sprite?.x ?? 0;
+      return leftToRight ? ax - bx : bx - ax;
+    });
+
+    if (this.patternText) {
+      this.patternText.setText(leftToRight ? '패턴1: 왼쪽부터 붕괴' : '패턴1: 오른쪽부터 붕괴');
+      this.patternText.setColor('#ffb347');
+    }
+
+    const baseCollapseIntervalMs = this.boss2Phase >= 2 ? 700 + 500 : 500;
+    const collapseIntervalMs = this.getBoss2FasterDelay(baseCollapseIntervalMs);
+    ordered.forEach((seg, i) => {
+      // 붕괴 1초 전에 빨간색으로 표시
+      this.queueBoss2Timer(Math.max(0, i * collapseIntervalMs - 1000), () => {
+        if (this.isBoss2ActionStale(actionToken)) return;
+        if (!seg?.sprite?.active || seg.collapsed) return;
+        seg.sprite.setTint(0xff0000); // 빨간색 경고
+      });
+
+      // 실제 붕괴
+      this.queueBoss2Timer(i * collapseIntervalMs, () => {
+        if (this.isBoss2ActionStale(actionToken)) return;
+        if (!seg?.sprite?.active || seg.collapsed) return;
+        this.collapseFloorSegment(seg.index);
+      });
+    });
+
+    const collapseFinishedAt = (ordered.length - 1) * collapseIntervalMs;
+    this.queueBoss2Timer(collapseFinishedAt, () => {
+      if (this.isBoss2ActionStale(actionToken)) return;
+      if (this.patternText) {
+        this.patternText.setText('패턴1: 반대 방향 복구');
+        this.patternText.setColor('#ffd8a8');
+      }
+
+      const restoreOrdered = [...ordered].reverse();
+      const restoreIntervalMs = this.getBoss2FasterDelay(1000);
+      restoreOrdered.forEach((seg, i) => {
+        this.queueBoss2Timer(i * restoreIntervalMs, () => {
+          if (this.isBoss2ActionStale(actionToken)) return;
+          this.restoreFloorSegment(seg.index);
+        });
+      });
+
+      const restoreFinishedAt = (restoreOrdered.length - 1) * restoreIntervalMs;
+      this.queueBoss2Timer(restoreFinishedAt + 900, () => {
+        this.finishBoss2Action(actionToken, action);
+      });
+    });
+  }
+
+  // ── 보스2 기본 루프 ─────────────────────
+  updateBoss2(time) {
+    if (this.ending || !this.boss?.sprite?.active) return;
+    this.maybeTriggerBoss2Phase2();
+    if (!this.boss2PatternStarted) {
+      this.startBoss2PatternLoop();
+    }
+
+    if (this.boss2ShieldVisual) {
+      this.boss2ShieldVisual.clear();
+      if (this.boss.invincible) {
+        const bx = this.boss.sprite.x;
+        const by = this.boss.sprite.y;
+        this.boss2ShieldVisual.lineStyle(6, 0xff3344, 0.95);
+        this.boss2ShieldVisual.strokeCircle(bx, by, 112);
+        this.boss2ShieldVisual.lineStyle(2, 0xff8a95, 0.85);
+        this.boss2ShieldVisual.strokeCircle(bx, by, 126);
+      }
+    }
+
+    if (this.boss2SpikeProjectiles) {
+      const minX = -220;
+      const maxX = this.worldWidth + 220;
+      this.boss2SpikeProjectiles.getChildren().forEach(spike => {
+        if (!spike?.active) return;
+
+        // 창은 중력/가속을 무시하고 반드시 수평 직선으로 이동한다.
+        spike.y = spike._fixedY ?? spike.y;
+        if (spike.body) {
+          spike.body.setAllowGravity(false);
+          spike.body.allowGravity = false;
+          spike.body.setGravity(0, 0);
+          spike.body.setVelocityY(0);
+          const baseSpeed = Math.round(this.scaleBossBattleSpeed(520));
+          const expectedVx = spike._vx ?? (spike._fromLeft ? baseSpeed : -baseSpeed);
+          if (Math.abs((spike.body.velocity?.x ?? 0) - expectedVx) > 1) {
+            spike.body.setVelocityX(expectedVx);
+          }
+        }
+
+        const reachedOppositeWall = spike._fromLeft
+          ? spike.x >= (spike._targetWallX ?? this.worldWidth + 96)
+          : spike.x <= (spike._targetWallX ?? -96);
+
+        if (reachedOppositeWall) {
+          this.handleBoss2Pattern3SpearArrived(spike);
+          spike.destroy();
+          return;
+        }
+
+        if (spike.x < minX || spike.x > maxX) {
+          this.handleBoss2Pattern3SpearArrived(spike);
+          spike.destroy();
+        }
+      });
+    }
+
+    if (this.boss2HomingMissiles) {
+      const minX = -80;
+      const maxX = this.worldWidth + 80;
+      this.boss2HomingMissiles.getChildren().forEach(missile => {
+        if (!missile?.active) return;
+
+        const now = this.time.now;
+        if (now >= (missile._expireAt || 0)) {
+          missile.destroy();
+          return;
+        }
+
+        const tx = this.player?.sprite?.x ?? missile.x;
+        const ty = this.player?.sprite?.y ?? missile.y;
+        const desiredAngle = Phaser.Math.Angle.Between(missile.x, missile.y, tx, ty);
+
+        const body = missile.body;
+        if (!body) return;
+        body.setAllowGravity(false);
+        body.allowGravity = false;
+        body.setGravity(0, 0);
+
+        const currentAngle = Math.atan2(body.velocity.y, body.velocity.x);
+        const turnRate = missile._turnRate ?? 0.15;
+        const nextAngle = Phaser.Math.Angle.RotateTo(currentAngle, desiredAngle, turnRate);
+        const speed = missile._speed ?? 330;
+        body.setVelocity(Math.cos(nextAngle) * speed, Math.sin(nextAngle) * speed);
+        missile.setRotation(nextAngle - Math.PI / 2);
+
+        if (missile.x < minX || missile.x > maxX || missile.y < -80 || missile.y > 820) {
+          missile.destroy();
+        }
+      });
+    }
+
+    if (this.boss.sprite.body) {
+      if (this.boss2AnchorLocked && this.boss2Anchor) {
+        this.boss.sprite.setPosition(this.boss2Anchor.x, this.boss2Anchor.y);
+      }
+      this.boss.sprite.body.setAllowGravity(false);
+      this.boss.sprite.body.setVelocityX(0);
+      this.boss.sprite.body.setVelocityY(0);
+    }
+  }
+
+  clearBoss2SpikeProjectiles() {
+    const group = this.boss2SpikeProjectiles;
+    if (!group) {
+      this.boss2Pattern3Remaining = 0;
+      this.boss2Pattern3Finished = true;
+      return;
+    }
+
+    // Scene shutdown 순서에 따라 group.children 이 먼저 파기될 수 있어 방어적으로 처리한다.
+    const hasChildren = !!group.children;
+    const children = hasChildren && group.getChildren ? group.getChildren() : [];
+    children.forEach(spike => {
+      if (spike?.active) spike.destroy();
+    });
+
+    if (group.clear) {
+      group.clear(true, true);
+    }
+    this.boss2Pattern3Remaining = 0;
+    this.boss2Pattern3Finished = true;
+  }
+
+  clearBoss2HomingMissiles() {
+    const group = this.boss2HomingMissiles;
+    if (!group) return;
+
+    const hasChildren = !!group.children;
+    const children = hasChildren && group.getChildren ? group.getChildren() : [];
+    children.forEach(missile => {
+      if (missile?.active) missile.destroy();
+    });
+
+    if (group.clear) {
+      group.clear(true, true);
+    }
+  }
+
+  clearBoss2ShieldVisual() {
+    if (!this.boss2ShieldVisual) return;
+    if (this.boss2ShieldVisual.active) {
+      this.boss2ShieldVisual.clear();
+      this.boss2ShieldVisual.destroy();
+    }
+    this.boss2ShieldVisual = null;
+  }
+
+  shutdownBoss2PatternSystems() {
+    this.boss2ActionToken = (this.boss2ActionToken || 0) + 1;
+    try { this.clearBoss2MoveTween(); } catch (_) {}
+    this.boss2AnchorLocked = true;
+    if (this.boss) {
+      this.boss.invincible = true;
+    }
+    try { this.clearBoss2Timers(); } catch (_) {}
+    try { this.restoreCollapsedFloorSegments(); } catch (_) {}
+    try { this.clearBoss2LaserVisuals(); } catch (_) {}
+    try { this.clearBoss2SpikeProjectiles(); } catch (_) {}
+    try { this.clearBoss2HomingMissiles(); } catch (_) {}
+    try { this.clearBoss2ShieldVisual(); } catch (_) {}
+    try { this.clearBoss2GlobalCrossLaserLoop(); } catch (_) {}
   }
 
 }

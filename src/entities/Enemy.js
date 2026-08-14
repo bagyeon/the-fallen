@@ -271,8 +271,8 @@ export default class Enemy {
       this.laserRangeGraphics = null;
     }
 
-    // 보스는 스프라이트를 바로 제거하지 않음 (씬에서 디졸브 애니메이션 처리)
-    if (this.type !== 'boss') {
+    // 보스류는 스프라이트를 바로 제거하지 않음 (씬에서 디졸브 애니메이션 처리)
+    if (this.type !== 'boss' && this.type !== 'boss2') {
       if (this.sprite && this.sprite.active) {
         this.sprite.destroy();
       }
