@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import Player from '../entities/Player.js';
 import Enemy from '../entities/Enemy.js';
+import ScoreManager from '../managers/ScoreManager.js';
 
 export default class StageScene extends Phaser.Scene {
   constructor() { super('Stage'); }
@@ -9,6 +10,20 @@ export default class StageScene extends Phaser.Scene {
     this.stage = data.stage ?? 1;
     this.step = data.step ?? 1;
     this.stepLabelBase = data.stepLabelBase ?? this.stage;
+    this.score = data.score ?? 0;
+    ScoreManager.init();
+  }
+
+  addScore(attackType, enemyType) {
+    let base = 0;
+    if (attackType === 'basic') base = 100;
+    else if (attackType === 'special') base = 200;
+    else return;
+    if (enemyType === 'boss' || enemyType === 'boss2') base += 50;
+    this.score += base;
+    if (this.scoreText && this.scoreText.active) {
+      this.scoreText.setText(`점수: ${this.score}`);
+    }
   }
 
   getStepLabel(step) {
@@ -137,6 +152,7 @@ export default class StageScene extends Phaser.Scene {
       if (now < this.player.dashingUntil && now >= (enemy._dashHitCooldown || 0)) {
         enemy._dashHitCooldown = now + 400;
         enemy.takeDamage(1);
+        this.addScore('basic', enemy.type);
       } else {
         enemy.tryAttack(this.player, now);
       }
@@ -163,6 +179,10 @@ export default class StageScene extends Phaser.Scene {
     this.statusText = this.add.text(24, 54, '', {
       fontFamily: 'Arial', fontSize: '20px', color: '#edf3ff'
     }).setScrollFactor(0).setDepth(1000);
+
+    this.scoreText = this.add.text(this.scale.width - 24, 24, `점수: ${this.score}`, {
+      fontFamily: 'Arial', fontSize: '28px', color: '#ffe08a', fontStyle: 'bold'
+    }).setOrigin(1, 0).setScrollFactor(0).setDepth(1000);
 
     const helpMessage = this.stage === 0 
       ? '좌클릭을 눌러 더미를 10회 공격하시오'
@@ -929,7 +949,12 @@ export default class StageScene extends Phaser.Scene {
   startLoseScene() {
     if (this.loseSceneStarted) return;
     this.loseSceneStarted = true;
-    this.scene.start('End', { result: 'lose' });
+    this.scene.start('End', {
+      result: 'lose',
+      score: this.score,
+      stage: this.stage,
+      step: this.step
+    });
   }
 
   handleStageClear() {
@@ -954,21 +979,27 @@ export default class StageScene extends Phaser.Scene {
     if (this.stage === 0) {
       this.scene.start('Title');
     } else if (this.stage === 1) {
-      this.scene.start('Boss', { stage: 1, step: 2 });  // 1-2 단계
+      this.scene.start('Boss', { stage: 1, step: 2, score: this.score });
     } else if (this.stage === 2) {
       if (this.step < 3) {
         this.scene.start('Stage', {
           stage: 2,
           step: this.step + 1,
-          stepLabelBase: 2
+          stepLabelBase: 2,
+          score: this.score
         });
       } else if (this.step === 3) {
-        this.scene.start('Boss', { stage: 2, step: 3 });  // 2-3 단계
+        this.scene.start('Boss', { stage: 2, step: 3, score: this.score });
       } else {
-        this.scene.start('End', { result: 'win' });
+        this.scene.start('End', {
+          result: 'win',
+          score: this.score,
+          stage: this.stage,
+          step: this.step
+        });
       }
     } else {
-      this.scene.start('Stage', { stage: this.stage + 1 });
+      this.scene.start('Stage', { stage: this.stage + 1, score: this.score });
     }
   }
 }

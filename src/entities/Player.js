@@ -395,6 +395,9 @@ export default class Player {
           hitEnemies.add(enemy);
           enemy.takeDamage(damage);
           this.addUltimateCharge(1);
+          if (this.scene.addScore) {
+            this.scene.addScore('basic', enemy.type);
+          }
         }
       });
     }
@@ -484,6 +487,9 @@ export default class Player {
 
         damagedEnemies.add(enemy);
         enemy.takeDamage(damage, this.scene.time.now);
+        if (this.scene.addScore) {
+          this.scene.addScore('special', enemy.type);
+        }
       });
     };
 
@@ -614,6 +620,9 @@ export default class Player {
         hitEnemies.push(enemySprite);
         enemy.takeDamage(this.groundSmashDamage, time);
         this.addUltimateCharge(1);
+        if (this.scene.addScore) {
+          this.scene.addScore('special', enemy.type);
+        }
 
         if (enemySprite.body && !enemy.noKnockback) {
           const knockbackDirection = enemySprite.x >= this.sprite.x ? 1 : -1;
@@ -743,6 +752,9 @@ export default class Player {
       hitEnemies.add(enemy);
       enemy.takeDamage(damage);
       this.addUltimateCharge(1);
+      if (this.scene.addScore) {
+        this.scene.addScore('special', enemy.type);
+      }
       hasHit = true;
 
       if (enemySprite.body && !enemy.noKnockback) {

@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import Player from '../entities/Player.js';
 import Enemy from '../entities/Enemy.js';
+import ScoreManager from '../managers/ScoreManager.js';
 
 export default class BossScene extends Phaser.Scene {
   constructor() { super('Boss'); }
@@ -8,6 +9,20 @@ export default class BossScene extends Phaser.Scene {
   init(data) {
     this.stageIndex = data?.stage ?? 2;
     this.stepIndex = data?.step ?? 2;
+    this.score = data?.score ?? 0;
+    ScoreManager.init();
+  }
+
+  addScore(attackType, enemyType) {
+    let base = 0;
+    if (attackType === 'basic') base = 100;
+    else if (attackType === 'special') base = 200;
+    else return;
+    if (enemyType === 'boss' || enemyType === 'boss2') base += 50;
+    this.score += base;
+    if (this.scoreText && this.scoreText.active) {
+      this.scoreText.setText(`점수: ${this.score}`);
+    }
   }
 
   getStepLabel(step) {
@@ -57,7 +72,12 @@ export default class BossScene extends Phaser.Scene {
   startLoseScene() {
     if (this.loseSceneStarted) return;
     try {
-      this.scene.start('End', { result: 'lose' });
+      this.scene.start('End', {
+        result: 'lose',
+        score: this.score,
+        stage: this.stageIndex,
+        step: this.stepIndex
+      });
       this.loseSceneStarted = true;
       if (this.loseSceneFallbackTimer) {
         window.clearTimeout(this.loseSceneFallbackTimer);
@@ -71,14 +91,24 @@ export default class BossScene extends Phaser.Scene {
   forceStartLoseScene() {
     if (this.loseSceneStarted) return;
     try {
-      this.scene.start('End', { result: 'lose' });
+      this.scene.start('End', {
+        result: 'lose',
+        score: this.score,
+        stage: this.stageIndex,
+        step: this.stepIndex
+      });
       this.loseSceneStarted = true;
     } catch (_) {
       try {
         const mgr = this.scene?.manager;
         if (mgr) {
           mgr.stop('Boss');
-          mgr.start('End', { result: 'lose' });
+          mgr.start('End', {
+            result: 'lose',
+            score: this.score,
+            stage: this.stageIndex,
+            step: this.stepIndex
+          });
           this.loseSceneStarted = true;
         }
       } catch (_) {
@@ -160,6 +190,7 @@ export default class BossScene extends Phaser.Scene {
       if (now < this.player.dashingUntil && now >= (enemy._dashHitCooldown || 0)) {
         enemy._dashHitCooldown = now + 400;
         enemy.takeDamage(2);
+        this.addScore('basic', enemy.type);
       } else {
         enemy.tryAttack(this.player, now);
       }
@@ -176,6 +207,10 @@ export default class BossScene extends Phaser.Scene {
       fontSize: '20px',
       color: '#edf3ff'
     }).setScrollFactor(0).setDepth(1000);
+
+    this.scoreText = this.add.text(this.scale.width - 24, 24, `점수: ${this.score}`, {
+      fontFamily: 'Arial', fontSize: '28px', color: '#ffe08a', fontStyle: 'bold'
+    }).setOrigin(1, 0).setScrollFactor(0).setDepth(1000);
 
     // 보스 체력바 (화면 상단 중앙)
     const bossBarWidth = 400;
@@ -242,7 +277,12 @@ export default class BossScene extends Phaser.Scene {
     const bossSprite = this.boss.sprite;
     if (!bossSprite || !bossSprite.active) {
       this.time.delayedCall(500, () => {
-        this.scene.start('End', { result: 'win' });
+        this.scene.start('End', {
+          result: 'win',
+          score: this.score,
+          stage: this.stageIndex,
+          step: this.stepIndex
+        });
       });
       return;
     }
@@ -283,7 +323,12 @@ export default class BossScene extends Phaser.Scene {
             bossSprite.destroy();
           }
           this.time.delayedCall(600, () => {
-            this.scene.start('End', { result: 'win' });
+            this.scene.start('End', {
+              result: 'win',
+              score: this.score,
+              stage: this.stageIndex,
+              step: this.stepIndex
+            });
           });
         }
       }
@@ -313,6 +358,7 @@ export default class BossScene extends Phaser.Scene {
       if (now < this.player.dashingUntil && now >= (enemy._dashHitCooldown || 0)) {
         enemy._dashHitCooldown = now + 400;
         enemy.takeDamage(2);
+        this.addScore('basic', enemy.type);
       } else {
         enemy.tryAttack(this.player, now);
       }
@@ -490,6 +536,10 @@ export default class BossScene extends Phaser.Scene {
     this.statusText = this.add.text(24, 54, '', {
       fontFamily: 'Arial', fontSize: '20px', color: '#edf3ff'
     }).setScrollFactor(0).setDepth(1000);
+
+    this.scoreText = this.add.text(this.scale.width - 24, 24, `점수: ${this.score}`, {
+      fontFamily: 'Arial', fontSize: '28px', color: '#ffe08a', fontStyle: 'bold'
+    }).setOrigin(1, 0).setScrollFactor(0).setDepth(1000);
 
     const bossBarWidth = 400;
     const bossBarHeight = 22;

@@ -9,6 +9,7 @@
     "deploy": "vite build && gh-pages -d dist"
   },
   "dependencies": {
+    "firebase": "^12.17.1",
     "phaser": "^3.60.0"
   },
   "devDependencies": {
